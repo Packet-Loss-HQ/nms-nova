@@ -1,0 +1,18 @@
+[Unit]
+Description=NMS-Nova poller
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nms-nova
+Environment="PYTHONPATH=/opt/nms-nova"
+Environment="NMS_DB=/opt/nms-nova/state/nms-nova.db"
+Environment="NMS_TARGETS=/opt/nms-nova/targets.yaml"
+ExecStart=/opt/nms-nova/.venv/bin/python3 /opt/nms-nova/scripts/poll_loop.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=NMS-Nova FastAPI
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nms-nova
+Environment="PYTHONPATH=/opt/nms-nova"
+Environment="NMS_DB=/opt/nms-nova/state/nms-nova.db"
+Environment="NMS_AUTH_USER=admin"
+Environment="NMS_AUTH_PASS=admin"
+ExecStart=/opt/nms-nova/.venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

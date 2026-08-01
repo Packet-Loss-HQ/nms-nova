@@ -1,0 +1,8 @@
+COMMERCIAL LICENSE — NMS-Nova
+
+Copyright (c) 2026 NMS-Nova Authors
+
+This commercial copy of NMS-Nova is proprietary software. The customer receives
+a non-exclusive, non-transferable license to deploy NMS-Nova for internal
+business use. Source code is provided for support and integration purposes only;
+modifications are permitted solely for the licensee's internal deployment.

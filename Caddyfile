@@ -1,0 +1,6 @@
+nms.<YOUR_DOMAIN> {
+  reverse_proxy 127.0.0.1:8000
+  basic_auth {
+    admin {env.NMS_AUTH_USER} {env.NMS_AUTH_PASS}
+  }
+}
