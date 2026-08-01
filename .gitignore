@@ -1,0 +1,7 @@
+state/nms-nova.db
+secrets/
+*.pyc
+__pycache__/
+.venv/
+backups/
+.git/

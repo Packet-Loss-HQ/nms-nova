@@ -1,0 +1,160 @@
+targets:
+  - name: host-a
+    kind: ssh
+    address: 10.0.0.1
+    probe_type: ssh
+    tier: T1
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 30
+      - name: memory_used_percent
+        interval_sec: 30
+      - name: disk_root_used_percent
+        interval_sec: 60
+      - name: service_up
+        interval_sec: 30
+        service_name: service-a.service
+      - name: interface_total_kbps
+        interval_sec: 30
+        interface: eth0
+
+  - name: host-b
+    kind: ssh
+    address: 10.0.0.2
+    probe_type: ssh
+    tier: T2
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        service_name: service-b.service
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-c
+    kind: ssh
+    address: 10.0.0.3
+    probe_type: ssh
+    tier: T1
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 30
+      - name: memory_used_percent
+        interval_sec: 30
+      - name: disk_root_used_percent
+        interval_sec: 60
+      - name: service_up
+        interval_sec: 30
+        service_name: service-c.service
+      - name: interface_total_kbps
+        interval_sec: 30
+        interface: eth0
+
+  - name: host-d
+    kind: ssh
+    address: 10.0.0.4
+    probe_type: ssh
+    tier: T2
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        service_name: service-d.service
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-e
+    kind: ssh
+    address: 10.0.0.5
+    probe_type: ssh
+    tier: T1
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 30
+      - name: memory_used_percent
+        interval_sec: 30
+      - name: disk_root_used_percent
+        interval_sec: 60
+      - name: service_up
+        interval_sec: 30
+        service_name: service-e.service
+      - name: interface_total_kbps
+        interval_sec: 30
+        interface: eth0
+
+  - name: host-f
+    kind: ssh
+    address: 10.0.0.6
+    probe_type: ssh
+    tier: T2
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        service_name: service-f.service
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-g
+    kind: ssh
+    address: 10.0.0.7
+    probe_type: ssh
+    tier: T2
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        service_name: service-g.service
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-h
+    kind: ssh
+    address: 10.0.0.8
+    probe_type: ssh
+    tier: T2
+    ssh_key: /opt/nms-nova/secrets/probe-key
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        service_name: service-h.service
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0

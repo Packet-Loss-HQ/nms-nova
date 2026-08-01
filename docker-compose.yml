@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  nms-nova:
+    build: .
+    container_name: nms-nova
+    environment:
+      - NMS_DB=/data/nms-nova.db
+      - NMS_AUTH_USER=${NMS_AUTH_USER:-change-me}
+      - NMS_AUTH_PASS=${NMS_AUTH_PASS:-change-me}
+      - NMS_API_TOKEN=${NMS_API_TOKEN:-}
+      - NMS_WEBHOOK_URL=${NMS_WEBHOOK_URL:-}
+    volumes:
+      - ./state:/data
+      - ./secrets:/opt/nms-nova/secrets:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m

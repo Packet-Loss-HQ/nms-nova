@@ -1,0 +1,9 @@
+[Unit]
+Description=NMS-Nova retention + down-sampling
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/nms-nova
+Environment="PYTHONPATH=/opt/nms-nova"
+ExecStart=/opt/nms-nova/.venv/bin/python3 scripts/retention_downsample.py
