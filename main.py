@@ -283,7 +283,7 @@ def _render_dashboard() -> str:
                 chart = new Chart(ctx, {{
                   type: 'line',
                   data: {{ labels, datasets: [{{ label: metric, data: values, borderWidth: 1.5, pointRadius: 0, tension: 0.2 }}] }},
-                  options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ x: {{ display: false }}, y: {{ beginAtZero: false }} }} }}
+                  options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ x: {{ display: false }}, y: {{ beginAtZero: true }} }} }}
                 }});
                 chartState[`${{target}}-${{metric}}`] = chart;
               }} else {{
