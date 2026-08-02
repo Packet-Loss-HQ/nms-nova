@@ -989,6 +989,9 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
     .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
     button, .button {{ padding: 0.55rem 0.75rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer; }}
     .empty {{ color: var(--muted); }}
+    .nav-toggle {{ display: none; }}
+    nav {{ display: block; }}
+    nav.open {{ display:block; margin-top: 0.75rem; }}
     @media (max-width: 640px) {{
       .nav-toggle {{ display: inline-block; }}
       nav {{ display:none; }}
@@ -1003,9 +1006,9 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
   <header>
     <div class='topbar'>
       <a class='brand' href='/'>NMS-Nova</a>
-      <button class='nav-toggle' onclick="document.querySelector('nav').classList.toggle('open')">Menu</button>
+      <button class='nav-toggle' id='nav-toggle' aria-expanded='false' aria-controls='main-nav'>Menu</button>
     </div>
-    <nav>
+    <nav id='main-nav'>
       <a href='/'>Dashboard</a>
       <a href='/targets'>Targets</a>
       <a href='/alerts'>Alerts</a>
@@ -1026,6 +1029,15 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
       if (!document.cookie.includes("_csrf=")) {{
         document.cookie = "_csrf={{csrf}}; Path=/; SameSite=Strict";
       }}
+    }})();
+    (function(){{
+      const btn = document.getElementById("nav-toggle");
+      const nav = document.getElementById("main-nav");
+      if (!btn || !nav) return;
+      btn.addEventListener("click", function(){{
+        const open = nav.classList.toggle("open");
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      }});
     }})();
   </script>
 </body>
