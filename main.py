@@ -521,7 +521,8 @@ async def list_targets_ui():
     cards = "".join(
         f"<div class='card'><div class='card-header'><span class='card-title'>{t['name']}</span>"
         f"<span class='tier-badge tier-{t.get('tier','T2').lower()}'>{t.get('tier','T2')}</span></div>"
-        f"<div class='card-body'><div class='card-meta'>{t.get('kind','')} / {t.get('address','')}</div>"
+        f"<div class='card-body'><div class='card-meta'><a class='card-link' href='/targets/{t['id']}'>{t['name']}</a></div>"
+        f"<div class='card-meta'>{t.get('kind','')} / {t.get('address','')}</div>"
         f"<div class='actions'><a class='button' href='/targets/{t['id']}'>View</a> "
         f"<a class='button' href='/targets/{t['id']}/edit'>Edit</a> "
         f"<button class='button' hx-delete='/targets/{t['id']}' hx-confirm='Delete {t['name']}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button></div></div></div>"
@@ -736,6 +737,7 @@ def _layout(title: str, body: str) -> str:
     .field label {{ font-size: 0.85rem; color: var(--muted); }}
     .field input, .field select {{ padding: 0.55rem 0.6rem; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }}
     .checks {{ display: grid; gap: 0.35rem; }}
+    .card-link {{ color: var(--accent); text-decoration: none; }}
     .metric-row {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; }}
     .metric-name {{ color: var(--muted); font-size: 0.85rem; }}
     .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
