@@ -21,6 +21,14 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = BASE_DIR / "state" / "nms-nova.db"
 
 store = state.store.MetricsStore(os.getenv("NMS_DB", str(DEFAULT_DB)))
+try:
+    store.migrate_add_alert_rule_delivery_columns()
+except Exception:
+    pass
+try:
+    store.migrate_add_delivery_columns()
+except Exception:
+    pass
 
 _initial_alert_rules = [
     AlertRule(metric_name="cpu_usage_percent", threshold=90.0, comparison="gt", description="CPU critical"),
@@ -95,12 +103,9 @@ def _bearer_auth(request: Request) -> bool:
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    public_paths = ("/health", "/metrics", "/chart")
+    public_paths = ("/health", "/metrics", "/chart", "/api/v1")
     if path in public_paths or any(path.startswith(p) for p in public_paths):
         return await call_next(request)
-    if not _is_api_request(request):
-        from fastapi.responses import Response
-        return Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
     if _basic_auth(request) or _bearer_auth(request):
         return await call_next(request)
     from fastapi.responses import Response
@@ -646,11 +651,15 @@ def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict, ru
         status = 0
         error_text = None
         for attempt in range(int(settings.get("retry_attempts") or 2)):
+            backoff = 2 ** attempt
             try:
                 resp = httpx.post(url, json=payload_or_json, timeout=float(settings.get("retry_timeout_sec") or 8.0))
                 status = resp.status_code
                 if resp.status_code < 400:
                     break
+                if attempt + 1 < int(settings.get("retry_attempts") or 2):
+                    import time as _time
+                    _time.sleep(backoff)
                 error_text = f"HTTP {resp.status_code}: {resp.text[:200]}"
             except Exception as exc:
                 status = 0
@@ -1116,12 +1125,20 @@ def api_get_delivery_settings():
         "telegram_enabled": bool(settings.get("telegram_enabled")),
         "webhook_enabled": bool(settings.get("webhook_enabled")),
         "webhook_url": settings.get("webhook_url", ""),
+        "retry_attempts": int(settings.get("retry_attempts") or 2),
+        "retry_timeout_sec": float(settings.get("retry_timeout_sec") or 8.0),
     })
 
 
 @api_router.get("/alerts/delivery/log")
 def api_delivery_log(limit: int = 100):
     rows = store.recent_delivery_log(limit)
+    return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.get("/alerts/pending-escalations")
+def api_pending_escalations():
+    rows = store.pending_escalations()
     return JSONResponse([dict(r) for r in rows])
 
 

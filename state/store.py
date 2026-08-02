@@ -203,6 +203,29 @@ class MetricsStore:
         finally:
             con.close()
 
+    def migrate_add_alert_rule_delivery_columns(self) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            existing = {r[1] for r in con.execute("PRAGMA table_info(alert_rules)").fetchall()}
+            for col in ("delivery", "cooldown_minutes", "escalation_target", "escalation_after_minutes"):
+                if col not in existing:
+                    con.execute(f"ALTER TABLE alert_rules ADD COLUMN {col} TEXT")
+            con.commit()
+        finally:
+            con.close()
+
+    def migrate_add_delivery_columns(self) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            existing = {r[1] for r in con.execute("PRAGMA table_info(delivery_settings)").fetchall()}
+            for col in ("retry_attempts INTEGER NOT NULL DEFAULT 2", "retry_timeout_sec REAL NOT NULL DEFAULT 8.0"):
+                name, rest = col.split(" ", 1)
+                if name not in existing:
+                    con.execute(f"ALTER TABLE delivery_settings ADD COLUMN {name} {rest}")
+            con.commit()
+        finally:
+            con.close()
+
     def list_targets(self) -> List[dict]:
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row
@@ -334,6 +357,32 @@ class MetricsStore:
             con.close()
 
     def list_alert_rules(self) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in con.execute("SELECT * FROM alert_rules ORDER BY id").fetchall()]
+        finally:
+            con.close()
+
+    def pending_escalations(self, limit: int = 200) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("""
+                SELECT ar.id, ar.metric_name, ar.threshold, ar.comparison, ar.consecutive,
+                       ar.description, ar.enabled, ar.updated_at, ar.cooldown_minutes,
+                       ar.escalation_target, ar.escalation_after_minutes
+                FROM alert_rules ar
+                WHERE ar.enabled = 1
+                  AND ar.escalation_target IS NOT NULL
+                  AND ar.escalation_target != ''
+                  AND ar.escalation_after_minutes > 0
+                ORDER BY ar.id
+                LIMIT ?
+            """, (int(limit),)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row
         try:
