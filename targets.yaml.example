@@ -1,10 +1,11 @@
+# Copy this file to targets.yaml and replace placeholder values with your own hosts.
 defaults:
   probe_ssh_key: /opt/nms-nova/secrets/nms-probe
 
 targets:
   - name: host-01
     kind: ssh
-    address: 10.0.110.21
+    address: HOST_IP
     probe_type: ssh
     tier: T1
     ssh_key: ${probe_ssh_key}
@@ -24,7 +25,7 @@ targets:
 
   - name: host-02
     kind: ssh
-    address: 10.0.110.22
+    address: HOST_IP
     probe_type: ssh
     tier: T1
     ssh_key: ${probe_ssh_key}
@@ -44,7 +45,7 @@ targets:
 
   - name: host-03
     kind: ssh
-    address: 10.0.110.23
+    address: HOST_IP
     probe_type: ssh
     tier: T2
     ssh_key: ${probe_ssh_key}
@@ -64,7 +65,7 @@ targets:
 
   - name: host-04
     kind: ssh
-    address: 10.0.110.24
+    address: HOST_IP
     probe_type: ssh
     tier: T2
     ssh_key: ${probe_ssh_key}
@@ -84,7 +85,7 @@ targets:
 
   - name: host-05
     kind: ssh
-    address: 10.0.110.25
+    address: HOST_IP
     probe_type: ssh
     tier: T2
     ssh_key: ${probe_ssh_key}
@@ -104,7 +105,7 @@ targets:
 
   - name: host-06
     kind: ssh
-    address: 10.0.110.26
+    address: HOST_IP
     probe_type: ssh
     tier: T2
     ssh_key: ${probe_ssh_key}
@@ -124,7 +125,7 @@ targets:
 
   - name: host-07
     kind: ssh
-    address: 10.0.110.27
+    address: HOST_IP
     probe_type: ssh
     tier: T1
     ssh_key: ${probe_ssh_key}
@@ -144,7 +145,7 @@ targets:
 
   - name: host-08
     kind: ssh
-    address: 10.0.110.28
+    address: HOST_IP
     probe_type: ssh
     tier: T2
     ssh_key: ${probe_ssh_key}
