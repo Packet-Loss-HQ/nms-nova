@@ -66,7 +66,8 @@ def _bearer_auth(request: Request) -> bool:
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path in ("/health", "/metrics"):
+    public_paths = ("/health", "/metrics", "/chart", "/alerts")
+    if path in public_paths or any(path.startswith(p) for p in public_paths):
         return await call_next(request)
     if not _is_api_request(request):
         from fastapi.responses import Response
