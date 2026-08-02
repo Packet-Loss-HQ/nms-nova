@@ -149,39 +149,38 @@ def _render_dashboard() -> str:
             ranges = ["24h", "7d", "30d"]
             chart_html = (
                 "<div class='chart-container' data-target='" + target_name + "' data-range='24h'>"
-                "<div class='chart-wrap'>"
-                "<div class='range-bar'>"
+                "<div class='chart-header'>"
                 + "".join(
-                    f"<button data-range='{r}' class='{'active' if r=='24h' else ''}' onclick='window._setRange(\"{target_name}\", \"{r}\")'>{r}</button>"
+                    f"<button data-range='{r}' class='range-btn {'active' if r=='24h' else ''}' onclick='window._setRange(\"{target_name}\", \"{r}\")'>{r}</button>"
                     for r in ranges
                 )
                 + "</div>"
                 + "".join(
-                    f"<canvas id='chart-{target_name}-{m}' style='width:100%;height:120px;margin-top:0.5rem'></canvas>"
+                    f"<div class='chart-wrap'><canvas id='chart-{target_name}-{m}'></canvas><div class='chart-label'>{m}</div></div>"
                     for m in chart_items
                 )
-                + "</div></div>"
+                + "</div>"
             )
 
         cards.append(
-            f"<div class='card'><div class='card-header'><span>{target_name}</span><span class='metric-name'>T{tier_map.get(target_name, 'T2')}</span></div>"
-            + "".join(items)
+            f"<div class='card'><div class='card-header'><span class='card-title'>{target_name}</span><span class='tier-badge tier-{tier_map.get(target_name, 'T2').lower()}'>{tier_map.get(target_name, 'T2')}</span></div>"
+            + "<div class='card-body'>" + "".join(items) + "</div>"
             + chart_html
             + "</div>"
         )
 
-    alert_banner = ""
+    alert_section = ""
     if alerts:
-        alert_banner = (
-            "<div class='alert-banner'>"
+        alert_section = (
+            "<div class='alert-strip'>"
             + "".join(
-                f"<div class='alert-row alert-{'critical' if 'down' in a['description'].lower() or 'critical' in a['description'].lower() else 'warning'}'>{a['target_name']}: {a['description']} ({a['value']})</div>"
+                f"<div class='alert-item alert-{'critical' if 'down' in a['description'].lower() or 'critical' in a['description'].lower() else 'warning'}'><span class='alert-target'>{a['target_name']}</span><span class='alert-text'>{a['description']}</span><span class='alert-value'>{a['value']}</span></div>"
                 for a in alerts
             )
             + "</div>"
         )
 
-    body = alert_banner + "<div class='grid'>" + "".join(cards) + "</div>"
+    body = alert_section + "<div class='grid'>" + "".join(cards) + "</div>"
     return f"""<!doctype html>
 <html>
 <head>
@@ -191,33 +190,70 @@ def _render_dashboard() -> str:
   <script src='https://unpkg.com/htmx.org@2.0.0'></script>
   <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
   <style>
-    :root {{ color-scheme: light dark; }}
-    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; }}
-    header {{ padding: 1rem; border-bottom: 1px solid #ccc; display:flex; justify-content:space-between; align-items:center; }}
-    main {{ padding: 1rem; }}
-    .grid {{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }}
-    .card {{ border: 1px solid #ccc; border-radius: 12px; padding: 1rem; }}
-    .card-header {{ font-weight: 700; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap: 1rem; }}
-    .metric-row {{ display: flex; justify-content: space-between; padding: 0.35rem 0; }}
-    .metric-name {{ color: #666; font-size: 0.9rem; }}
-    .metric-value {{ font-weight: 700; font-size: 1.1rem; }}
-    .chart-wrap {{ margin-top: 1rem; }}
-    .range-bar {{ display:flex; gap: 0.5rem; }}
-    .range-bar button {{ background: #eee; border: 1px solid #ccc; border-radius: 6px; padding: 0.25rem 0.5rem; cursor: pointer; font-size: 0.8rem; }}
-    .range-bar button.active {{ background: #333; color: #fff; border-color: #333; }}
-    .alert-banner {{ margin: 1rem; }}
-    .alert-row {{ padding: 0.6rem 0.8rem; border-radius: 8px; color: #fff; font-weight: 600; margin-top: 0.5rem; }}
-    .alert-critical {{ background: #c62828; }}
-    .alert-warning {{ background: #ef6c00; }}
+    :root {{
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --card-bg: #ffffff;
+      --text: #1f2328;
+      --muted: #57606a;
+      --border: #d0d7de;
+      --accent: #0969da;
+      --ok: #0a0;
+      --warn: #b90;
+      --crit: #cf222e;
+      --shadow: rgba(31, 35, 40, 0.06);
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --bg: #0d1117;
+        --card-bg: #161b22;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --border: #30363d;
+        --shadow: rgba(0, 0, 0, 0.4);
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }}
+    header {{ padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap: 1rem; background: var(--card-bg); }}
+    .brand {{ font-weight: 800; letter-spacing: -0.02em; font-size: 1.1rem; }}
+    .meta {{ color: var(--muted); font-size: 0.85rem; }}
+    main {{ padding: 1.5rem; }}
+    .grid {{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
+    .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; box-shadow: 0 2px 0 var(--shadow); }}
+    .card-header {{ display:flex; justify-content:space-between; align-items:center; gap: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }}
+    .card-title {{ font-weight: 700; font-size: 1rem; word-break: break-word; }}
+    .tier-badge {{ font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }}
+    .tier-t1 {{ color: #1a7f37; border-color: #1a7f37; background: rgba(26,127,55,0.08); }}
+    .tier-t2 {{ color: #57606a; }}
+    .card-body {{ display: grid; gap: 0.35rem; }}
+    .metric-row {{ display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; }}
+    .metric-name {{ color: var(--muted); font-size: 0.88rem; }}
+    .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
+    .chart-container {{ margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px dashed var(--border); }}
+    .chart-header {{ display:flex; gap: 0.4rem; margin-bottom: 0.6rem; }}
+    .range-btn {{ background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 0.25rem 0.55rem; cursor: pointer; font-size: 0.78rem; color: var(--muted); }}
+    .range-btn.active {{ background: var(--text); color: var(--bg); border-color: var(--text); }}
+    .chart-wrap {{ display: grid; gap: 0.6rem; }}
+    canvas {{ width: 100% !important; height: 110px !important; }}
+    .chart-label {{ font-size: 0.75rem; color: var(--muted); text-align: right; }}
+    .alert-strip {{ display: grid; gap: 0.5rem; margin-bottom: 1rem; }}
+    .alert-item {{ display:flex; justify-content:space-between; align-items:center; gap: 1rem; padding: 0.7rem 0.9rem; border-radius: 10px; border: 1px solid transparent; }}
+    .alert-critical {{ background: rgba(207,34,46,0.12); color: var(--crit); border-color: rgba(207,34,46,0.35); }}
+    .alert-warning {{ background: rgba(187,144,0,0.10); color: #8a6d00; border-color: rgba(187,144,0,0.35); }}
+    .alert-target {{ font-weight: 700; word-break: break-word; }}
+    .alert-text {{ color: var(--muted); font-size: 0.9rem; }}
+    .alert-value {{ font-weight: 800; font-variant-numeric: tabular-nums; }}
+    .empty {{ color: var(--muted); font-size: 0.9rem; }}
   </style>
 </head>
 <body>
   <header>
-    <div><strong>NMS-Nova</strong> <span class='metric-name'>v0.1.0</span></div>
-    <div class='metric-name'>CT109 • {len(targets)} targets</div>
+    <div><div class='brand'>NMS-Nova</div><div class='meta'>v{app.version}</div></div>
+    <div class='meta'>{len(targets)} targets</div>
   </header>
   <main hx-get='/' hx-trigger='every 15s' hx-swap='innerHTML'>
-    {body}
+    {body if body else "<div class='empty'>No data yet</div>"}
   </main>
   <script>
     const chartState = {{}};
@@ -257,7 +293,7 @@ def _render_dashboard() -> str:
     renderCharts();
     setInterval(renderCharts, 15000);
     window._setRange = function(target, range) {{
-      document.querySelectorAll(`.chart-container[data-target="${{target}}"] .range-bar button`).forEach(btn => btn.classList.toggle('active', btn.dataset.range === range));
+      document.querySelectorAll(`.chart-container[data-target="${{target}}"] .range-btn`).forEach(btn => btn.classList.toggle('active', btn.dataset.range === range));
       const el = document.querySelector(`.chart-container[data-target="${{target}}"]`);
       if (el) el.dataset.range = range;
       renderCharts();
