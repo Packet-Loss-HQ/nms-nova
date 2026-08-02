@@ -79,6 +79,14 @@ def _is_api_request(request: Request) -> bool:
     return auth.startswith("Bearer ") or auth.startswith("Basic ")
 
 
+def _is_public_path(path: str) -> bool:
+    public_prefixes = (
+        "/health", "/healthz", "/metrics", "/chart",
+        "/static", "/api/v1", "/docs", "/redoc", "/openapi.json", "/license/check"
+    )
+    return path in public_prefixes or any(path.startswith(p) for p in public_prefixes)
+
+
 def _basic_auth(request: Request) -> bool:
     auth = request.headers.get("authorization")
     if not auth or not auth.startswith("Basic "):
@@ -127,6 +135,16 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     from fastapi.responses import Response
     return Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
+
+
+@app.get("/license/check")
+def license_check():
+    settings = store.get_branding_settings()
+    return JSONResponse({
+        "mode": settings.get("license_mode", "mit"),
+        "commercial_features_enabled": settings.get("license_mode") == "commercial",
+        "support_contact": "sales@packet-loss.net" if settings.get("license_mode") == "commercial" else None,
+    })
 
 
 
@@ -1302,8 +1320,40 @@ async def preview_branding(request: Request):
 
 
 
-@api_router.get("/license/check")
-def api_license_check():
+
+
+# M15: commercial license feature gates
+_brand = store.get_branding_settings()
+_commercial_mode = _brand.get("license_mode") == "commercial"
+_commercial_features = {
+    "advanced_reporting": _commercial_mode,
+    "commercial_support": _commercial_mode,
+    "priority_routing": _commercial_mode,
+}
+
+
+@app.get("/license/check")
+def license_check():
+    settings = store.get_branding_settings()
+    return JSONResponse({
+        "mode": settings.get("license_mode", "mit"),
+        "commercial_features_enabled": settings.get("license_mode") == "commercial",
+        "features": _commercial_features,
+        "support_contact": "sales@packet-loss.net" if settings.get("license_mode") == "commercial" else None,
+    })
+
+
+@app.get("/upgrade")
+async def upgrade_page():
+    body = """
+    <div class='page-header'><h2>Commercial License</h2></div>
+    <div class='empty'>
+      <p>NMS-Nova commercial license removes usage restrictions and includes priority support.</p>
+      <p>Contact <a href='mailto:sales@packet-loss.net'>sales@packet-loss.net</a> for pricing.</p>
+    </div>
+    """
+    return HTMLResponse(_layout("Upgrade", body))
+
     settings = store.get_branding_settings()
     mode = settings.get("license_mode", "mit")
     return JSONResponse({
