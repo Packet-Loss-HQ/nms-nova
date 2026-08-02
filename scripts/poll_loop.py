@@ -48,6 +48,14 @@ def load_targets(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text())
 
 
+def _resolve_vars(cfg: dict[str, Any]) -> dict[str, Any]:
+    defaults = cfg.get("defaults", {})
+    text = yaml.safe_dump(cfg, default_flow_style=False)
+    for key, value in defaults.items():
+        text = text.replace(f"${{{key}}}", str(value))
+    return yaml.safe_load(text)
+
+
 def build_target_map(targets_cfg: dict[str, Any]) -> dict[str, dict]:
     out = {}
     for t in targets_cfg.get("targets", []):
@@ -95,7 +103,7 @@ def validate_targets(cfg: dict[str, Any]) -> list[str]:
 
 
 def run_once(store: MetricsStore, targets_path: Path, runner: ProbeRunner) -> None:
-    cfg = load_targets(targets_path)
+    cfg = _resolve_vars(load_targets(targets_path))
     target_map = build_target_map(cfg)
 
     for name, t in target_map.items():
@@ -162,6 +170,7 @@ def run_once(store: MetricsStore, targets_path: Path, runner: ProbeRunner) -> No
                     target_kind=t.get("kind", "lxc"),
                     target_address=t.get("address", name),
                     service_name=m.get("service_name", ""),
+                    container_name=m.get("container_name", ""),
                 )
                 store.insert_sample(result.target_id, result.definition_id, result.value, error=result.error)
             except Exception as exc:

@@ -299,11 +299,14 @@ def _render_dashboard() -> str:
     renderCharts();
     setInterval(renderCharts, 15000);
     window._setRange = function(target, range) {{
-      document.querySelectorAll(`.chart-container[data-target="${{target}}"] .range-btn`).forEach(btn => btn.classList.toggle('active', btn.dataset.range === range));
-      const el = document.querySelector(`.chart-container[data-target="${{target}}"]`);
+      document.querySelectorAll(`.chart-container[data-target=\"${{target}}\"] .range-btn`).forEach(btn => btn.classList.toggle('active', btn.dataset.range === range));
+      const el = document.querySelector(`.chart-container[data-target=\"${{target}}\"]`);
       if (el) el.dataset.range = range;
       renderCharts();
     }};
+    if (window.htmx) {{
+      document.addEventListener('htmx:afterSwap', renderCharts);
+    }}
   </script>
 </body>
 </html>"""

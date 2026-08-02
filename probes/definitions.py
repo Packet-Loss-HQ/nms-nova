@@ -47,15 +47,33 @@ def probe_disk_root_used_percent(runner: ProbeRunner, target_id: int, definition
     return ProbeResult(target_id=target_id, definition_id=definition_id, value=value)
 
 
-def probe_service_up(runner: ProbeRunner, target_id: int, definition_id: int, target_kind: str, target_address: str, service_name: str = "", **_kwargs) -> ProbeResult:
-    if not service_name:
-        return ProbeResult(target_id=target_id, definition_id=definition_id, value=1.0, error="missing service_name")
-    code = f"import subprocess,sys; r=subprocess.run(['systemctl','is-active',{repr(service_name)}],capture_output=True,text=True); print('active' if r.returncode==0 else 'inactive')"
-    try:
-        raw = _remote_python(runner, target_kind, target_address, code)
-        value = 1.0 if raw == "active" else 0.0
-    except Exception:
-        value = 0.0
+def probe_service_up(runner: ProbeRunner, target_id: int, definition_id: int, target_kind: str, target_address: str, service_name: str = "", container_name: str = "", **_kwargs) -> ProbeResult:
+    value = 0.0
+    error = None
+    if service_name:
+        code = f"import subprocess,sys; r=subprocess.run(['systemctl','is-active',{repr(service_name)}],capture_output=True,text=True); print('active' if r.returncode==0 else 'inactive')"
+        try:
+            raw = _remote_python(runner, target_kind, target_address, code)
+            if raw == "active":
+                value = 1.0
+        except Exception as exc:
+            error = str(exc)
+    if value == 0.0 and container_name:
+        code = (
+            "import subprocess,sys;"
+            " r=subprocess.run(['docker','inspect','--format','{{.State.Status}}'," + repr(container_name) + "],"
+            "capture_output=True,text=True);"
+            " print((r.stdout or 'missing').strip())"
+        )
+        try:
+            raw = _remote_python(runner, target_kind, target_address, code)
+            status = raw.strip().strip('"')
+            if status == "running":
+                value = 1.0
+        except Exception as exc:
+            error = str(exc)
+    if value == 0.0 and error:
+        return ProbeResult(target_id=target_id, definition_id=definition_id, value=0.0, error=error)
     return ProbeResult(target_id=target_id, definition_id=definition_id, value=value)
 
 
