@@ -122,7 +122,7 @@ _delivery_settings = _load_delivery_settings()
 
 
 def _post_webhook(alerts: list[dict[str, Any]]) -> None:
-    payload = {"alerts": alerts, "source": "nms-nova"}
+    payload = {"schema_version": 1, "alerts": alerts, "source": "nms-nova"}
     settings = _delivery_settings
     if settings.get("webhook_enabled") and settings.get("webhook_url"):
         try:
@@ -426,6 +426,83 @@ def _target_form(target: dict | None = None, metrics: list[dict] | None = None) 
 
 
 
+@app.get("/settings-v2")
+async def settings_v2():
+    s = store.get_delivery_settings()
+    masked_token = "••••••••" if s.get("telegram_bot_token") else ""
+    masked_chat = "••••••••" if s.get("telegram_chat_id") else ""
+    masked_webhook = "••••••••" if s.get("webhook_url") else ""
+    body = (
+        "<div class='page-header'><h2>Alert delivery</h2></div>"
+        "<div class='grid'>"
+        "<div class='card'><div class='card-header'><span class='card-title'>Telegram</span></div>"
+        "<div class='card-body'>"
+        "<form hx-post='/settings-v2/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
+        f"<div class='field'><label>Enable Telegram</label><select name='telegram_enabled'>"
+        f"<option value='1' {'selected' if s.get('telegram_enabled') else ''}>Yes</option>"
+        f"<option value='0' {'selected' if not s.get('telegram_enabled') else ''}>No</option>"
+        "</select></div>"
+        f"<div class='field'><label>Bot token</label><input type='password' name='telegram_bot_token' value='' placeholder='{masked_token}' autocomplete='new-password'></div>"
+        f"<div class='field'><label>Chat ID</label><input name='telegram_chat_id' value='{masked_chat if s.get('telegram_chat_id') else ''}'></div>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
+        "<div class='card'><div class='card-header'><span class='card-title'>Webhook</span></div>"
+        "<div class='card-body'>"
+        "<form hx-post='/settings-v2/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
+        f"<div class='field'><label>Enable webhook</label><select name='webhook_enabled'>"
+        f"<option value='1' {'selected' if s.get('webhook_enabled') else ''}>Yes</option>"
+        f"<option value='0' {'selected' if not s.get('webhook_enabled') else ''}>No</option>"
+        "</select></div>"
+        f"<div class='field'><label>Webhook URL</label><input name='webhook_url' value='{masked_webhook if s.get('webhook_url') else ''}'></div>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
+        "<div id='test-result'></div>"
+        "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
+        "<div class='card-body'><button class='button' hx-post='/settings-v2/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'>"
+        "</div>"
+    )
+    return HTMLResponse(_layout("Alert delivery", body), status_code=200)
+
+
+@app.post("/settings-v2/delivery")
+async def save_delivery_v2(request: Request):
+    form = await request.form()
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    settings = {
+        "telegram_enabled": form.get("telegram_enabled") == "1",
+        "telegram_bot_token": form.get("telegram_bot_token", ""),
+        "telegram_chat_id": form.get("telegram_chat_id", ""),
+        "webhook_enabled": form.get("webhook_enabled") == "1",
+        "webhook_url": form.get("webhook_url", ""),
+    }
+    store.save_delivery_settings(settings)
+    global _delivery_settings
+    _delivery_settings = settings
+    return HTMLResponse(_post_save_redirect("/settings-v2"))
+
+
+@app.post("/settings-v2/test")
+async def test_delivery_v2(request: Request):
+    form = await request.form()
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    settings = store.get_delivery_settings()
+    test_alerts = [
+        {"target_name": "test",
+         "metric_name": "test_metric",
+         "value": 1,
+         "description": "Test alert delivery"},
+    ]
+    _post_webhook_with_settings(test_alerts, settings)
+    recent = store._conn().execute("SELECT destination, status, error, created_at FROM delivery_log ORDER BY id DESC LIMIT 2").fetchall()
+    rows = "".join(
+        f"<div class='metric-row'><span class='metric-name'>{r[0]}</span><span class='metric-value'>{'OK' if r[1] and r[1] < 400 else 'FAIL'} {r[1] or 0}</span></div>"
+        + (f"<div class='empty' style='font-size:0.8rem'>{r[2]}</div>" if r[2] else "")
+        for r in recent
+    )
+    return HTMLResponse(f"<div class='empty'>Test complete</div>{rows}")
+
+
 @app.get("/settings")
 async def settings_form():
     s = store.get_delivery_settings()
@@ -488,23 +565,31 @@ async def test_delivery():
 
 
 def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict) -> None:
-    payload = {"alerts": alerts, "source": "nms-nova"}
+    payload = {"schema_version": 1, "alerts": alerts, "source": "nms-nova"}
+    destinations = []
     if settings.get("webhook_enabled") and settings.get("webhook_url"):
-        try:
-            httpx.post(settings["webhook_url"], json=payload, timeout=5)
-        except Exception:
-            pass
+        destinations.append(("webhook", settings["webhook_url"], payload))
     if settings.get("telegram_enabled") and settings.get("telegram_bot_token") and settings.get("telegram_chat_id") and alerts:
+        text_out = "\n".join(
+            f"⚠️ {a['description']}: {a['target_name']} / {a['metric_name']} = {a['value']}"
+            for a in alerts
+        )
+        destinations.append(("telegram", f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage", {"chat_id": settings["telegram_chat_id"], "text": text_out}))
+    for kind, url, payload_or_json in destinations:
+        status = 0
+        error_text = None
+        for attempt in range(2):
+            try:
+                resp = httpx.post(url, json=payload_or_json, timeout=8)
+                status = resp.status_code
+                if resp.status_code < 400:
+                    break
+                error_text = f"HTTP {resp.status_code}: {resp.text[:200]}"
+            except Exception as exc:
+                status = 0
+                error_text = str(exc)[:200]
         try:
-            text = "\n".join(
-                f"⚠️ {a['description']}: {a['target_name']} / {a['metric_name']} = {a['value']}"
-                for a in alerts
-            )
-            httpx.post(
-                f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage",
-                json={"chat_id": settings["telegram_chat_id"], "text": text},
-                timeout=5,
-            )
+            store.log_delivery(kind, len(alerts), status, error_text)
         except Exception:
             pass
 
@@ -787,7 +872,9 @@ def _post_save_redirect(location: str) -> str:
     return f"<div hx-redirect='{location}'></div>"
 
 
-def _layout(title: str, body: str) -> str:
+def _layout(title: str, body: str, status_code: int = 200) -> str:
+    import secrets
+    csrf = secrets.token_urlsafe(16)
     return f"""<!doctype html>
 <html>
 <head>
@@ -867,7 +954,7 @@ def _layout(title: str, body: str) -> str:
       <a href='/'>Dashboard</a>
       <a href='/targets'>Targets</a>
       <a href='/alerts'>Alerts</a>
-      <a href='/settings'>Settings</a>
+      <a href='/settings-v2'>Settings</a>
     </nav>
   </header>
   <main id='main-content'>
@@ -881,6 +968,9 @@ def _layout(title: str, body: str) -> str:
         const active = (href === "/" && path === "/") || (href !== "/" && path.startsWith(href));
         if (active) a.classList.add("active");
       }});
+      if (!document.cookie.includes("_csrf=")) {{
+        document.cookie = "_csrf={{csrf}}; Path=/; SameSite=Strict";
+      }}
     }})();
   </script>
 </body>

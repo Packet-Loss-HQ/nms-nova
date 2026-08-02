@@ -97,6 +97,18 @@ class MetricsStore:
             )
             con.execute(
                 """
+                CREATE TABLE IF NOT EXISTS delivery_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    destination TEXT,
+                    alert_count INTEGER,
+                    status INTEGER,
+                    error TEXT
+                )
+                """
+            )
+            con.execute(
+                """
                 CREATE TABLE IF NOT EXISTS delivery_settings (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     telegram_enabled BOOLEAN NOT NULL DEFAULT 0,
@@ -339,21 +351,34 @@ class MetricsStore:
             con.close()
 
 
-    def get_delivery_settings(self) -> dict:
-        con = sqlite3.connect(self.db_path)
-        con.row_factory = sqlite3.Row
+    def log_delivery(self, destination: str, alert_count: int, status: int, error: str | None = None) -> None:
+        con = self._conn()
         try:
-            row = con.execute("SELECT * FROM delivery_settings WHERE id = 1").fetchone()
-            return dict(row) if row else {
-                "id": 1,
-                "telegram_enabled": False,
-                "telegram_bot_token": "",
-                "telegram_chat_id": "",
-                "webhook_enabled": False,
-                "webhook_url": "",
-            }
+            con.execute(
+                "INSERT INTO delivery_log(destination, alert_count, status, error) VALUES (?, ?, ?, ?)",
+                (destination, alert_count, status, error),
+            )
+            con.commit()
+        except Exception:
+            pass
         finally:
             con.close()
+
+    def get_delivery_settings(self) -> dict:
+            con = sqlite3.connect(self.db_path)
+            con.row_factory = sqlite3.Row
+            try:
+                row = con.execute("SELECT * FROM delivery_settings WHERE id = 1").fetchone()
+                return dict(row) if row else {
+                    "id": 1,
+                    "telegram_enabled": False,
+                    "telegram_bot_token": "",
+                    "telegram_chat_id": "",
+                    "webhook_enabled": False,
+                    "webhook_url": "",
+                }
+            finally:
+                con.close()
 
     def save_delivery_settings(self, settings: dict) -> None:
         con = sqlite3.connect(self.db_path)
