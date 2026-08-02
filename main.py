@@ -4,29 +4,55 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from secrets import compare_digest
 import yaml
 import state.store
 from state.alerts import AlertEngine, AlertRule
 
-DEFAULT_RULES = [
-    AlertRule(metric_name="cpu_usage_percent", threshold=90.0, comparison="gt", description="CPU critical"),
-    AlertRule(metric_name="memory_used_percent", threshold=90.0, comparison="gt", description="Memory critical"),
-    AlertRule(metric_name="service_up", threshold=0.5, comparison="lt", description="Service down"),
-]
-alert_engine = AlertEngine(rules=DEFAULT_RULES)
-
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = BASE_DIR / "state" / "nms-nova.db"
 
 store = state.store.MetricsStore(os.getenv("NMS_DB", str(DEFAULT_DB)))
+
+_initial_alert_rules = [
+    AlertRule(metric_name="cpu_usage_percent", threshold=90.0, comparison="gt", description="CPU critical"),
+    AlertRule(metric_name="memory_used_percent", threshold=90.0, comparison="gt", description="Memory critical"),
+    AlertRule(metric_name="service_up", threshold=0.5, comparison="lt", description="Service down"),
+]
+try:
+    _delivery_init = store.get_delivery_settings()
+except Exception:
+    _delivery_init = {}
+if not _delivery_init:
+    store.save_delivery_settings({
+        "telegram_enabled": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID),
+        "telegram_bot_token": TELEGRAM_BOT_TOKEN or "",
+        "telegram_chat_id": TELEGRAM_CHAT_ID or "",
+        "webhook_enabled": bool(WEBHOOK_URL),
+        "webhook_url": WEBHOOK_URL or "",
+    })
+_delivery_settings = store.get_delivery_settings()
+if not store.list_alert_rules():
+    for r in _initial_alert_rules:
+        store.create_alert_rule(
+            metric_name=r.metric_name,
+            threshold=r.threshold,
+            comparison=r.comparison,
+            consecutive=r.consecutive,
+            description=r.description,
+            enabled=True,
+        )
+_loaded_rules = [AlertRule(**{k: v for k, v in r.items() if k in {"metric_name", "threshold", "comparison", "consecutive", "description"}}) for r in store.list_alert_rules()] or _initial_alert_rules[:]
+alert_engine = AlertEngine(rules=_loaded_rules)
 app = FastAPI(title="NMS-Nova", version="0.2.0")
+app.mount('/static', StaticFiles(directory='/opt/nms-nova/static'), name='static')
 security = HTTPBasic()
 
 BEARER_TOKEN = os.getenv("NMS_API_TOKEN", "")
@@ -68,7 +94,7 @@ def _bearer_auth(request: Request) -> bool:
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    public_paths = ("/health", "/metrics", "/chart", "/alerts")
+    public_paths = ("/health", "/metrics", "/chart")
     if path in public_paths or any(path.startswith(p) for p in public_paths):
         return await call_next(request)
     if not _is_api_request(request):
@@ -80,22 +106,38 @@ async def auth_middleware(request: Request, call_next):
     return Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
 
 
+def _load_delivery_settings() -> dict:
+    try:
+        return store.get_delivery_settings()
+    except Exception:
+        return {
+            "telegram_enabled": False,
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+            "webhook_enabled": False,
+            "webhook_url": "",
+        }
+
+_delivery_settings = _load_delivery_settings()
+
+
 def _post_webhook(alerts: list[dict[str, Any]]) -> None:
     payload = {"alerts": alerts, "source": "nms-nova"}
-    if WEBHOOK_URL:
+    settings = _delivery_settings
+    if settings.get("webhook_enabled") and settings.get("webhook_url"):
         try:
-            httpx.post(WEBHOOK_URL, json=payload, timeout=5)
+            httpx.post(settings["webhook_url"], json=payload, timeout=5)
         except Exception:
             pass
-    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID and alerts:
+    if settings.get("telegram_enabled") and settings.get("telegram_bot_token") and settings.get("telegram_chat_id") and alerts:
         try:
             text = "\n".join(
                 f"⚠️ {a['description']}: {a['target_name']} / {a['metric_name']} = {a['value']}"
                 for a in alerts
             )
             httpx.post(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={"chat_id": TELEGRAM_CHAT_ID, "text": text},
+                f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage",
+                json={"chat_id": settings["telegram_chat_id"], "text": text},
                 timeout=5,
             )
         except Exception:
@@ -110,7 +152,7 @@ def _evaluate_alerts() -> list[dict[str, Any]]:
             {"target_name": a.target_name, "metric_name": a.metric_name, "value": a.value, "description": a.description}
             for a in alert_engine.evaluate(row["target_name"], row["metric_name"], row["value"])
         )
-    _post_webhook(alerts)
+    _post_webhook_with_settings(alerts, _delivery_settings)
     return alerts
 
 
@@ -180,7 +222,7 @@ def _render_dashboard() -> str:
             )
 
         cards.append(
-            f"<div class='card'><div class='card-header'><span class='card-title'>{target_name}</span><span class='tier-badge tier-{tier_map.get(target_name, 'T2').lower()}'>{tier_map.get(target_name, 'T2')}</span></div>"
+            f"<div class='card'><div class='card-header'><a class='card-title' href='/targets/{target_map[target_name]['id']}' style='text-decoration:none;color:inherit'>{target_name}</a><span class='tier-badge tier-{tier_map.get(target_name, 'T2').lower()}'>{tier_map.get(target_name, 'T2')}</span></div>"
             + "<div class='card-body'>" + "".join(items) + "</div>"
             + chart_html
             + "</div>"
@@ -403,15 +445,6 @@ async def status_page():
     return HTMLResponse(_layout("Status", body))
 
 
-@app.get("/alerts")
-async def alerts_endpoint():
-    rows = store.latest_samples()
-    alerts = []
-    for row in rows:
-        alerts.extend(alert_engine.evaluate(row["target_name"], row["metric_name"], row["value"]))
-    return {"alerts": [a.__dict__ for a in alerts]}
-
-
 @app.get("/chart/{target_name}")
 async def target_chart(target_name: str, range: str = "24h"):
     con = __import__("sqlite3").connect(store.db_path)
@@ -515,6 +548,201 @@ def _target_form(target: dict | None = None, metrics: list[dict] | None = None) 
     """ % (action, method, name, kind_opts, address, probe_opts, tier_opts, ssh_key, metric_checks)
 
 
+
+
+@app.get("/settings")
+async def settings_form():
+    s = store.get_delivery_settings()
+    body = (
+        "<div class='page-header'><h2>Alert delivery</h2></div>"
+        "<div class='grid'>"
+        "<div class='card'><div class='card-header'><span class='card-title'>Telegram</span></div>"
+        "<div class='card-body'>"
+        "<form hx-post='/settings/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
+        f"<div class='field'><label>Enable Telegram</label><select name='telegram_enabled'>"
+        f"<option value='1' {'selected' if s.get('telegram_enabled') else ''}>Yes</option>"
+        f"<option value='0' {'selected' if not s.get('telegram_enabled') else ''}>No</option>"
+        "</select></div>"
+        f"<div class='field'><label>Bot token</label><input name='telegram_bot_token' value='{s.get('telegram_bot_token','')}'></div>"
+        f"<div class='field'><label>Chat ID</label><input name='telegram_chat_id' value='{s.get('telegram_chat_id','')}'></div>"
+        "<button type='submit'>Save</button></form></div></div>"
+        "<div class='card'><div class='card-header'><span class='card-title'>Webhook</span></div>"
+        "<div class='card-body'>"
+        "<form hx-post='/settings/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
+        f"<div class='field'><label>Enable webhook</label><select name='webhook_enabled'>"
+        f"<option value='1' {'selected' if s.get('webhook_enabled') else ''}>Yes</option>"
+        f"<option value='0' {'selected' if not s.get('webhook_enabled') else ''}>No</option>"
+        "</select></div>"
+        f"<div class='field'><label>Webhook URL</label><input name='webhook_url' value='{s.get('webhook_url','')}'></div>"
+        "<button type='submit'>Save</button></form></div></div>"
+        "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
+        "<div class='card-body'><button class='button' hx-post='/settings/test' hx-target='#main-content' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "</div>"
+    )
+    return HTMLResponse(_layout("Alert delivery", body))
+
+
+@app.post("/settings/delivery")
+async def save_delivery(request: Request):
+    form = await request.form()
+    settings = {
+        "telegram_enabled": form.get("telegram_enabled") == "1",
+        "telegram_bot_token": form.get("telegram_bot_token", ""),
+        "telegram_chat_id": form.get("telegram_chat_id", ""),
+        "webhook_enabled": form.get("webhook_enabled") == "1",
+        "webhook_url": form.get("webhook_url", ""),
+    }
+    store.save_delivery_settings(settings)
+    global _delivery_settings
+    _delivery_settings = settings
+    return HTMLResponse(_post_save_redirect("/settings"))
+
+
+@app.post("/settings/test")
+async def test_delivery():
+    settings = store.get_delivery_settings()
+    test_alerts = [{
+        "target_name": "test",
+        "metric_name": "test_metric",
+        "value": 1,
+        "description": "Test alert delivery",
+    }]
+    _post_webhook_with_settings(test_alerts, settings)
+    return HTMLResponse("<div class='empty'>Test sent. Check your Telegram/webhook destination.</div>")
+
+
+def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict) -> None:
+    payload = {"alerts": alerts, "source": "nms-nova"}
+    if settings.get("webhook_enabled") and settings.get("webhook_url"):
+        try:
+            httpx.post(settings["webhook_url"], json=payload, timeout=5)
+        except Exception:
+            pass
+    if settings.get("telegram_enabled") and settings.get("telegram_bot_token") and settings.get("telegram_chat_id") and alerts:
+        try:
+            text = "\n".join(
+                f"⚠️ {a['description']}: {a['target_name']} / {a['metric_name']} = {a['value']}"
+                for a in alerts
+            )
+            httpx.post(
+                f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage",
+                json={"chat_id": settings["telegram_chat_id"], "text": text},
+                timeout=5,
+            )
+        except Exception:
+            pass
+
+
+@app.get("/alerts")
+async def list_alerts_ui():
+    rules = store.list_alert_rules()
+    cards = "".join(
+        f"<div class='card'><div class='card-header'><span class='card-title'>{r['metric_name']}</span>"
+        f"<span class='tier-badge tier-t2'>{'Enabled' if r['enabled'] else 'Disabled'}</span></div>"
+        f"<div class='card-body'>"
+        f"<div class='metric-row'><span class='metric-name'>Threshold</span><span class='metric-value'>{r['threshold']}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Compare</span><span class='metric-value'>{r['comparison']}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Consecutive</span><span class='metric-value'>{r['consecutive']}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Description</span><span class='metric-value'>{r['description'] or '-'}</span></div>"
+        f"</div>"
+        f"<div class='actions'>"
+        f"<a class='button' href='/alerts/{r['id']}/edit'>Edit</a> "
+        f"<button class='button' hx-delete='/alerts/{r['id']}' hx-confirm='Delete {r['metric_name']} rule?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>"
+        f"</div></div></div>"
+        for r in rules
+    )
+    body = (
+        "<div class='page-header'><h2>Alert rules</h2><button hx-get='/alerts/new' hx-target='#main-content' hx-swap='innerHTML'>Add rule</button></div>"
+        "<div class='grid'>" + (cards or "<div class='empty'>No rules</div>") + "</div>"
+    )
+    return HTMLResponse(_layout("Alerts", body))
+
+
+@app.get("/alerts/new")
+async def new_alert_form():
+    return HTMLResponse(_layout("New alert rule", _alert_rule_form()))
+
+
+@app.get("/alerts/{rule_id}/edit")
+async def edit_alert_form(rule_id: int):
+    rule = next((r for r in store.list_alert_rules() if r["id"] == rule_id), None)
+    if not rule:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    return HTMLResponse(_layout("Edit alert rule", _alert_rule_form(rule=rule)))
+
+
+@app.post("/alerts")
+async def create_alert(request: Request):
+    form = await request.form()
+    store.create_alert_rule(
+        metric_name=form.get("metric_name", ""),
+        threshold=float(form.get("threshold", 0)),
+        comparison=form.get("comparison", "gt"),
+        consecutive=int(form.get("consecutive", 2)),
+        description=form.get("description", ""),
+        enabled=bool(int(form.get("enabled", 1))),
+    )
+    _refresh_alert_engine()
+    return HTMLResponse(_post_save_redirect("/alerts"))
+
+
+@app.put("/alerts/{rule_id}")
+async def update_alert(rule_id: int, request: Request):
+    rule = next((r for r in store.list_alert_rules() if r["id"] == rule_id), None)
+    if not rule:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    form = await request.form()
+    store.update_alert_rule(
+        rule_id,
+        metric_name=form.get("metric_name", rule["metric_name"]),
+        threshold=float(form.get("threshold", rule["threshold"])),
+        comparison=form.get("comparison", rule["comparison"]),
+        consecutive=int(form.get("consecutive", rule["consecutive"])),
+        description=form.get("description", rule["description"]),
+        enabled=bool(int(form.get("enabled", rule["enabled"]))),
+    )
+    _refresh_alert_engine()
+    return HTMLResponse(_post_save_redirect("/alerts"))
+
+
+@app.delete("/alerts/{rule_id}")
+async def delete_alert(rule_id: int):
+    store.delete_alert_rule(rule_id)
+    _refresh_alert_engine()
+    return HTMLResponse(_post_save_redirect("/alerts"))
+
+
+def _refresh_alert_engine() -> None:
+    rules = [AlertRule(**r) for r in store.list_alert_rules()]
+    alert_engine.rules = rules or _initial_alert_rules[:]
+
+
+def _alert_rule_form(rule: Optional[dict] = None) -> str:
+    rule = rule or {}
+    rid = rule.get("id", "")
+    action = f"/alerts/{rid}" if rid else "/alerts"
+    method = 'hx-put="true"' if rid else ""
+    comparison = rule.get("comparison", "gt")
+    enabled = 1 if rule.get("enabled", True) else 0
+    return f"""
+    <form hx-post='{action}' {method} hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>Metric</label><input name='metric_name' value='{rule.get('metric_name','')}' required></div>
+      <div class='field'><label>Threshold</label><input name='threshold' type='number' step='any' value='{rule.get('threshold','')}' required></div>
+      <div class='field'><label>Comparison</label><select name='comparison'>
+        <option value='gt' {'selected' if comparison=='gt' else ''}>gt</option>
+        <option value='lt' {'selected' if comparison=='lt' else ''}>lt</option>
+        <option value='eq' {'selected' if comparison=='eq' else ''}>eq</option>
+      </select></div>
+      <div class='field'><label>Consecutive</label><input name='consecutive' type='number' value='{rule.get('consecutive', 2)}' required></div>
+      <div class='field'><label>Description</label><input name='description' value='{rule.get('description','')}'></div>
+      <div class='field'><label>Enabled</label><select name='enabled'>
+        <option value='1' {'selected' if enabled else ''}>Yes</option>
+        <option value='0' {'selected' if not enabled else ''}>No</option>
+      </select></div>
+      <button type='submit'>Save</button> <button type='button' hx-get='/alerts' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
+    </form>
+    """
+
 @app.get("/targets")
 async def list_targets_ui():
     rows = store.list_targets()
@@ -611,9 +839,7 @@ async def target_detail(target_id: int):
         "<div class='card'><div class='card-header'><span class='card-title'>Latest metrics</span></div>"
         "<div class='card-body'>" + ("".join(items) if items else "<div class='empty'>No samples yet</div>") + "</div></div>"
         "</div>"
-        "<div class='chart-container' data-target='" + target["name"] + "' data-range='24h' style='margin-top:1rem'>"
         + chart_html
-        + "</div>"
     )
     return HTMLResponse(_layout(target["name"], body))
 
@@ -693,6 +919,8 @@ def _layout(title: str, body: str) -> str:
   <meta name='viewport' content='width=device-width, initial-scale=1' />
   <title>NMS-Nova - {title}</title>
   <script src='https://unpkg.com/htmx.org@2.0.0'></script>
+  <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
+  <script src='/static/detail.js'></script>
   <style>
     :root {{
       color-scheme: light dark;

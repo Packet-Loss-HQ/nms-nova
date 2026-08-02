@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0 - 2026-08-02
+- Add Alert Rules Editor UI at `/alerts` with CRUD for rules
+- Persist alert rules in SQLite `alert_rules` table
+- Add Alert Delivery Management at `/settings` for Telegram and webhook config
+- Add test alert delivery from settings UI
+- Restore dashboard card links to target detail pages
+- Restore `/targets` list View buttons
+- Add Chart.js 4.4.0 CDN to shared layout for detail pages
+- Add `/static/detail.js` for chart initialization and range switching
+- Add FastAPI static file mount for `/static`
+
 ## v0.2.0 - 2026-08-02
 - SQLite-backed target management UI
 - Add/edit/delete targets via `/targets`

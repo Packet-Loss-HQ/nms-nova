@@ -81,6 +81,32 @@ class MetricsStore:
                 con.execute("ALTER TABLE targets ADD COLUMN ssh_key TEXT")
             except Exception:
                 pass
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS alert_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric_name TEXT NOT NULL,
+                    threshold REAL NOT NULL,
+                    comparison TEXT NOT NULL DEFAULT 'gt',
+                    consecutive INTEGER NOT NULL DEFAULT 2,
+                    description TEXT NOT NULL DEFAULT '',
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS delivery_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    telegram_enabled BOOLEAN NOT NULL DEFAULT 0,
+                    telegram_bot_token TEXT NOT NULL DEFAULT '',
+                    telegram_chat_id TEXT NOT NULL DEFAULT '',
+                    webhook_enabled BOOLEAN NOT NULL DEFAULT 0,
+                    webhook_url TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
             con.commit()
         finally:
             con.close()
@@ -264,6 +290,91 @@ class MetricsStore:
         try:
             con.execute("DELETE FROM metric_samples WHERE definition_id = ?", (definition_id,))
             con.execute("DELETE FROM metric_definitions WHERE id = ?", (definition_id,))
+            con.commit()
+        finally:
+            con.close()
+
+
+    def list_alert_rules(self) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in con.execute("SELECT * FROM alert_rules ORDER BY id").fetchall()]
+        finally:
+            con.close()
+
+    def create_alert_rule(self, metric_name: str, threshold: float, comparison: str = "gt", consecutive: int = 2, description: str = "", enabled: bool = True) -> int:
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.execute(
+                "INSERT INTO alert_rules(metric_name, threshold, comparison, consecutive, description, enabled) VALUES(?,?,?,?,?,?)",
+                (metric_name, float(threshold), comparison, int(consecutive), description, 1 if enabled else 0),
+            )
+            con.commit()
+            return cur.lastrowid
+        finally:
+            con.close()
+
+    def update_alert_rule(self, rule_id: int, **fields: Any) -> None:
+        allowed = {"metric_name", "threshold", "comparison", "consecutive", "description", "enabled"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [rule_id]
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(f"UPDATE alert_rules SET {sets} WHERE id=?", vals)
+            con.commit()
+        finally:
+            con.close()
+
+    def delete_alert_rule(self, rule_id: int) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("DELETE FROM alert_rules WHERE id=?", (rule_id,))
+            con.commit()
+        finally:
+            con.close()
+
+
+    def get_delivery_settings(self) -> dict:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM delivery_settings WHERE id = 1").fetchone()
+            return dict(row) if row else {
+                "id": 1,
+                "telegram_enabled": False,
+                "telegram_bot_token": "",
+                "telegram_chat_id": "",
+                "webhook_enabled": False,
+                "webhook_url": "",
+            }
+        finally:
+            con.close()
+
+    def save_delivery_settings(self, settings: dict) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                """INSERT INTO delivery_settings(id, telegram_enabled, telegram_bot_token, telegram_chat_id, webhook_enabled, webhook_url)
+                   VALUES(1, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       telegram_enabled=excluded.telegram_enabled,
+                       telegram_bot_token=excluded.telegram_bot_token,
+                       telegram_chat_id=excluded.telegram_chat_id,
+                       webhook_enabled=excluded.webhook_enabled,
+                       webhook_url=excluded.webhook_url""",
+                (
+                    1 if settings.get("telegram_enabled") else 0,
+                    settings.get("telegram_bot_token", ""),
+                    settings.get("telegram_chat_id", ""),
+                    1 if settings.get("webhook_enabled") else 0,
+                    settings.get("webhook_url", ""),
+                ),
+            )
             con.commit()
         finally:
             con.close()
