@@ -4,7 +4,7 @@ Lightweight, agentless, read-only network monitoring for homelabs and small netw
 
 NMS-Nova is built around one constraint: **no agents on the targets**. It probes hosts over SSH/LXC and stores time-series metrics in SQLite. The result is a simple, self-hosted monitoring stack that stays out of the way and doesn’t create a copyleft dependency problem.
 
-**Current version:** v0.2.0
+**Current version:** v0.4.0
 
 ## Features
 

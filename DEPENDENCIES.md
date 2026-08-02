@@ -8,21 +8,22 @@
 | Uvicorn | 0.30.0 | MIT | ASGI server |
 | Pydantic | 2.7.0 | MIT | Data validation |
 | python-multipart | 0.0.9 | MIT | Form parsing |
-| PyYAML | latest | MIT | Target config parsing |
+| PyYAML | 6.0.1 | MIT | Target config parsing |
+| httpx | 0.27.0 | MIT | HTTP client for delivery |
 
 ## Infrastructure
 | Component | Version | License | Purpose |
 |-----------|---------|---------|---------|
 | SQLite | 3.35+ | Public Domain | Metrics store |
 | Reverse proxy | latest | Apache 2.0 | TLS termination |
-| OS base | 12 | Various (permissive) | Base OS |
+| OS base | Debian 12 | Various (permissive) | Base OS |
 | Tunnel client | latest | BSD-3-Clause | Tunnel ingress |
 
 ## Frontend
 | Component | Version | License | Purpose |
 |-----------|---------|---------|---------|
 | HTMX | 2.0.0 | MIT | Interactivity |
-| Chart.js | latest | MIT | Trend charts |
+| Chart.js | 4.4.0 | MIT | Trend charts |
 
 ## License policy
 Only permissive licenses are permitted: MIT, Apache 2.0, PSF, Public Domain, BSD-3-Clause.

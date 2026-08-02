@@ -1,13 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+## v0.4.0 - 2026-08-02
+- Add `/api/v1` JSON endpoints: targets, metrics, alert rules, delivery settings, delivery log, pending escalations
+- Configurable webhook retry attempts + timeout via `delivery_settings`
+- Per-rule cooldown support in alert delivery routing
+- Escalation chain support: `escalation_target`, `escalation_after_minutes`
+- One-time DB migrations for new columns/tables
+- Scoped API token auth: `/api/v1/admin/tokens` create/list, middleware assigns `request.state.api_scopes`
+- Auth middleware: `/api/v1` no longer requires Basic auth, supports Bearer and scoped tokens
+- Update docs/version strings to 0.4.0
+
+## v0.3.3 - 2026-08-02
+- M10.1 closeout: masked secrets, webhook HMAC signing, `schema_version: 1`
+- Retry + audit log for delivery sends, `delivery_log` table
+- Alert dedup, per-rule delivery routing, test delivery rate limit
+- CSRF protection on save/test endpoints
+- `/settings-v2` route with masked fields and inline test feedback
+
+## v0.3.2 - 2026-08-02
+- Mobile responsive fixes for `/targets`, `/status`, dashboard cards
+- Shared `_layout()` nav with hamburger menu
+- Dashboard unified to shared layout
+
+## v0.3.1 - 2026-08-02
+- Responsive top nav with hamburger menu
+- Active-state highlighting on nav links
+
 ## v0.3.0 - 2026-08-02
-- Add Alert Rules Editor UI at `/alerts` with CRUD for rules
+- Alert Rules Editor UI at `/alerts` with CRUD for rules
 - Persist alert rules in SQLite `alert_rules` table
-- Add Alert Delivery Management at `/settings` for Telegram and webhook config
-- Add test alert delivery from settings UI
+- Alert Delivery Management at `/settings` for Telegram and webhook config
+- Test alert delivery from settings UI
 - Restore dashboard card links to target detail pages
 - Restore `/targets` list View buttons
-- Add Chart.js 4.4.0 CDN to shared layout for detail pages
+- Chart.js 4.4.0 CDN to shared layout for detail pages
 - Add `/static/detail.js` for chart initialization and range switching
 - Add FastAPI static file mount for `/static`
 
@@ -30,7 +58,7 @@
 - Fix FastAPI app version display in dashboard UI
 
 ## v0.1.3 - 2026-08-02
-- Chart.js dashboard now survives HTMX refreshes and renders single-sample data points
+- Chart.js dashboard survives HTMX refreshes and renders single-sample data points
 - Unified `service_up` probe supports both systemd services and Docker containers
 - Placeholder hosts removed; real target configs reconciled to 8-host deployment
 - Light/dark theme UI cleanup; fixed interface units and alert strip formatting

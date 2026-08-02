@@ -66,7 +66,7 @@ Alerts are posted when rules in `state/alerts.py` trigger.
 - Disk full: run retention manually or prune old backups in `/opt/nms-nova/backups`
 
 ## Release Notes
-### v0.2.0
+### v0.4.0
 - SQLite-backed target management UI at `/targets`
 - Add/edit/delete targets via web UI
 - YAML→SQLite migration on first run
