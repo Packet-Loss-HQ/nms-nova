@@ -19,7 +19,7 @@ python3 -m venv /opt/nms-nova/.venv
 ```
 
 ## Configure
-Edit `targets.yaml` with hosts and metric intervals, then:
+Copy `targets.yaml.example` to `targets.yaml` and edit with hosts and metric intervals, then:
 ```bash
 /opt/nms-nova/.venv/bin/python3 scripts/poll_loop.py
 ```

@@ -1,0 +1,163 @@
+defaults:
+  probe_ssh_key: /opt/nms-nova/secrets/nms-probe
+
+targets:
+  - name: host-01
+    kind: ssh
+    address: 10.0.110.21
+    probe_type: ssh
+    tier: T1
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 30
+      - name: memory_used_percent
+        interval_sec: 30
+      - name: disk_root_used_percent
+        interval_sec: 60
+      - name: service_up
+        interval_sec: 30
+        service_name: svc-a.service
+      - name: interface_total_kbps
+        interval_sec: 30
+        interface: eth0
+
+  - name: host-02
+    kind: ssh
+    address: 10.0.110.22
+    probe_type: ssh
+    tier: T1
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 30
+      - name: memory_used_percent
+        interval_sec: 30
+      - name: disk_root_used_percent
+        interval_sec: 60
+      - name: service_up
+        interval_sec: 30
+        service_name: svc-b.service
+      - name: interface_total_kbps
+        interval_sec: 30
+        interface: eth0
+
+  - name: host-03
+    kind: ssh
+    address: 10.0.110.23
+    probe_type: ssh
+    tier: T2
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        service_name: svc-c.service
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-04
+    kind: ssh
+    address: 10.0.110.24
+    probe_type: ssh
+    tier: T2
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        container_name: container-a
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-05
+    kind: ssh
+    address: 10.0.110.25
+    probe_type: ssh
+    tier: T2
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        container_name: container-b
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-06
+    kind: ssh
+    address: 10.0.110.26
+    probe_type: ssh
+    tier: T2
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        container_name: container-c
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0
+
+  - name: host-07
+    kind: ssh
+    address: 10.0.110.27
+    probe_type: ssh
+    tier: T1
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 30
+      - name: memory_used_percent
+        interval_sec: 30
+      - name: disk_root_used_percent
+        interval_sec: 60
+      - name: service_up
+        interval_sec: 30
+        service_name: svc-d.service
+      - name: interface_total_kbps
+        interval_sec: 30
+        interface: eth0
+
+  - name: host-08
+    kind: ssh
+    address: 10.0.110.28
+    probe_type: ssh
+    tier: T2
+    ssh_key: ${probe_ssh_key}
+    metrics:
+      - name: cpu_usage_percent
+        interval_sec: 60
+      - name: memory_used_percent
+        interval_sec: 60
+      - name: disk_root_used_percent
+        interval_sec: 120
+      - name: service_up
+        interval_sec: 60
+        container_name: container-e
+      - name: interface_total_kbps
+        interval_sec: 60
+        interface: eth0

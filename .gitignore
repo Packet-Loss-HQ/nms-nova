@@ -1,4 +1,5 @@
 state/nms-nova.db
+targets.yaml
 secrets/
 *.pyc
 __pycache__/

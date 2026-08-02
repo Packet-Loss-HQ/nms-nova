@@ -282,7 +282,7 @@ def _render_dashboard() -> str:
                 const ctx = canvas.getContext('2d');
                 chart = new Chart(ctx, {{
                   type: 'line',
-                  data: {{ labels, datasets: [{{ label: metric, data: values, borderWidth: 1.5, pointRadius: 0, tension: 0.2 }}] }},
+                  data: {{ labels, datasets: [{{ label: metric, data: values, borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4, tension: 0.2 }}] }},
                   options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ x: {{ display: false }}, y: {{ beginAtZero: true }} }} }}
                 }});
                 chartState[`${{target}}-${{metric}}`] = chart;
