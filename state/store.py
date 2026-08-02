@@ -83,16 +83,27 @@ class MetricsStore:
                 pass
             con.execute(
                 """
+                CREATE TABLE IF NOT EXISTS api_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token TEXT NOT NULL UNIQUE,
+                    scope TEXT NOT NULL DEFAULT "read",
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            con.execute(
+                """
                 CREATE TABLE IF NOT EXISTS alert_rules (
-                delivery TEXT NOT NULL DEFAULT 'all',
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     metric_name TEXT NOT NULL,
                     threshold REAL NOT NULL,
                     comparison TEXT NOT NULL DEFAULT 'gt',
                     consecutive INTEGER NOT NULL DEFAULT 2,
-            cooldown_minutes INTEGER NOT NULL DEFAULT 0,
-            escalation_target TEXT,
                     description TEXT NOT NULL DEFAULT '',
+                    delivery TEXT NOT NULL DEFAULT 'all',
+                    cooldown_minutes INTEGER NOT NULL DEFAULT 0,
+                    escalation_target TEXT,
                     enabled BOOLEAN NOT NULL DEFAULT 1,
                     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
@@ -119,8 +130,8 @@ class MetricsStore:
                     telegram_chat_id TEXT NOT NULL DEFAULT '',
                     webhook_enabled BOOLEAN NOT NULL DEFAULT 0,
                     webhook_url TEXT,
-            retry_attempts INTEGER NOT NULL DEFAULT 2,
-            retry_timeout_sec REAL NOT NULL DEFAULT 8.0 NOT NULL DEFAULT ''
+                    retry_attempts INTEGER NOT NULL DEFAULT 2,
+                    retry_timeout_sec REAL NOT NULL DEFAULT 8.0
                 )
                 """
             )
@@ -356,6 +367,24 @@ class MetricsStore:
         finally:
             con.close()
 
+    def list_api_tokens(self) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("SELECT id, token, scope, enabled FROM api_tokens ORDER BY id").fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def create_api_token(self, token: str, scope: str = "read", enabled: bool = True) -> int:
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.execute("INSERT INTO api_tokens(token, scope, enabled) VALUES(?,?,?)", (token, scope, 1 if enabled else 0))
+            con.commit()
+            return cur.lastrowid
+        finally:
+            con.close()
+
     def list_alert_rules(self) -> List[dict]:
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row
@@ -365,6 +394,32 @@ class MetricsStore:
             con.close()
 
     def pending_escalations(self, limit: int = 200) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("""
+                SELECT ar.id, ar.metric_name, ar.threshold, ar.comparison, ar.consecutive,
+                       ar.description, ar.enabled, ar.updated_at, ar.cooldown_minutes,
+                       ar.escalation_target, ar.escalation_after_minutes
+                FROM alert_rules ar
+                WHERE ar.enabled = 1
+                  AND ar.escalation_target IS NOT NULL
+                  AND ar.escalation_target != ''
+                  AND ar.escalation_after_minutes > 0
+                ORDER BY ar.id
+                LIMIT ?
+            """, (int(limit),)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def apply_escalation(self, rule_id: int, target: str) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE alert_rules SET escalation_target = ? WHERE id = ?", (target, int(rule_id)))
+            con.commit()
+        finally:
+            con.close()
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row
         try:

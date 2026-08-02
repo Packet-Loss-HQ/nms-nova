@@ -29,6 +29,10 @@ try:
     store.migrate_add_delivery_columns()
 except Exception:
     pass
+try:
+    _api_tokens_cache = store.list_api_tokens()
+except Exception:
+    _api_tokens_cache = []
 
 _initial_alert_rules = [
     AlertRule(metric_name="cpu_usage_percent", threshold=90.0, comparison="gt", description="CPU critical"),
@@ -100,16 +104,33 @@ def _bearer_auth(request: Request) -> bool:
     return compare_digest(auth.split(" ", 1)[1], BEARER_TOKEN)
 
 
+
+
+# M13: scoped API token auth
+try:
+    api_tokens = store.list_api_tokens()
+except Exception:
+    api_tokens = _api_tokens_cache
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
     public_paths = ("/health", "/metrics", "/chart", "/api/v1")
     if path in public_paths or any(path.startswith(p) for p in public_paths):
         return await call_next(request)
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth.split(" ", 1)[1]
+        scopes = [t["scope"] for t in api_tokens if t.get("token") == token and t.get("enabled")]
+        if scopes:
+            request.state.api_scopes = scopes
+            return await call_next(request)
     if _basic_auth(request) or _bearer_auth(request):
         return await call_next(request)
     from fastapi.responses import Response
     return Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
+
 
 
 def _load_delivery_settings() -> dict:
@@ -1141,5 +1162,22 @@ def api_pending_escalations():
     rows = store.pending_escalations()
     return JSONResponse([dict(r) for r in rows])
 
+
+@api_router.get("/admin/tokens")
+def api_list_tokens(request: Request):
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    rows = store.list_api_tokens()
+    return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.post("/admin/tokens")
+def api_create_token(request: Request, token: str = "", scope: str = "read"):
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    token_id = store.create_api_token(token=token or __import__("secrets").token_urlsafe(32), scope=scope)
+    return JSONResponse({"id": token_id, "token": token or __import__("secrets").token_urlsafe(32), "scope": scope})
 
 app.include_router(api_router)
