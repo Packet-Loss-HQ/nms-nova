@@ -1,14 +1,22 @@
 # Changelog
 
+## v0.1.5 - 2026-08-02
+- Add Telegram alert delivery via bot token / chat ID env vars
+- Add `scripts/purge_target.py` for removing targets and their historical data
+- Expand RUNBOOK.md with add-target, remove-target, and Telegram setup steps
+
+## v0.1.4 - 2026-08-02
+- Allow unauthenticated chart data fetch for dashboard JS
+- Chart canvases initialize correctly on first load and after HTMX refresh
+- Single-sample metrics render visible data points
+- Fix FastAPI app version display in dashboard UI
+
 ## v0.1.3 - 2026-08-02
-- Fix chart rendering after HTMX body refresh
-- Ensure single-sample metrics render visible data points
-- Remove placeholder hosts from monitoring config
-- Add Docker container detection for `service_up` probe
-- Switch probes to direct SSH path; remove lxc_host workaround
-- Redesign dashboard UI: light/dark theme, clean cards, refined alerts
-- Fix `interface_total_kbps` unit display
-- Sanitize public repo: `targets.yaml` removed, `targets.yaml.example` added
+- Chart.js dashboard now survives HTMX refreshes and renders single-sample data points
+- Unified `service_up` probe supports both systemd services and Docker containers
+- Placeholder hosts removed; real target configs reconciled to 8-host deployment
+- Light/dark theme UI cleanup; fixed interface units and alert strip formatting
+- Sanitize public repo: real `targets.yaml` removed from git history, `targets.yaml.example` added
 
 ## v0.1.2 - 2026-08-01
 - Add CI workflow for lint/test

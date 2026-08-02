@@ -1,12 +1,14 @@
 # NMS-Nova Productization Readiness
 
-## Status: READY for public portfolio release; commercial-ready pending final audit.
+## Status: Public portfolio released; commercial-ready pending final audit.
 
 ## Deliverables Complete
-- M1: read-only NMS with LE-secured public dashboard, multi-host coverage
-- M2: tier-aware polling, systemd persistence, targets.yaml expansion
-- M3: Chart.js trend UI, 24h/7d/30d ranges, retention/down-sampling script, daily timer
-- M4: runbook, backup/restore tool, demo dataset, license audit
+- v0.1.0: initial public portfolio release (MIT)
+- v0.1.1: alert engine, bearer auth, webhooks, enriched `/health`
+- v0.1.2: CI workflow, `DEPENDENCIES.md`, public-doc cleanup
+- v0.1.3: chart JS fixes, unified `service_up` probe, sanitized git history
+- v0.1.4: public chart data endpoint for dashboard JS, version UI fix
+- v0.1.5: Telegram alert delivery, target purge script, RUNBOOK expansion
 
 ## Dual Licensing Model
 - Public portfolio / homelab use: MIT
@@ -19,14 +21,15 @@
 - Never mix; keep commercial-only assets out of `main`
 
 ## Pre-Release Checklist
-1. Remove demo data seed from default startup path
-2. Replace demo default credentials with documented first-run setup
+1. `targets.yaml` is git-ignored; `targets.yaml.example` is public template
+2. Demo seed script exists but is not part of default startup
 3. `LICENSE-MIT.txt` present at repo root
 4. `COMMERCIAL-LICENSE.txt` present for proprietary branch
 5. `DEPENDENCIES.md` matches installed packages exactly
-6. Strip internal hostnames/ips from public docs; use placeholders like `your-nms-host.example`
-7. Add GitHub issue templates / security policy
-8. Tag release `v0.1.0` on `main`
+6. Internal hostnames/IPs/tokens stripped from tracked files
+7. GitHub release notes and changelog updated for each tag
+8. CI workflow passes before push
+9. Full sanitization pass before any GitHub push
 
 ## Competitor Positioning
 - Targets SMBs/MSPs who cannot deploy GPL NMS tools without legal risk
