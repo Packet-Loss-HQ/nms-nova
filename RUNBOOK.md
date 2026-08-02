@@ -11,27 +11,36 @@
 - DB path: `/opt/nms-nova/state/nms-nova.db` or `/data/nms-nova.db` in container
 
 ## Common Tasks
-### Manual poller restart
-```
-systemctl restart nms-nova-poller
-```
-
-### FastAPI restart
-```
-systemctl restart nms-nova-fastapi
-```
-
 ### Add a target
-1. Add the target block to `targets.yaml`
-2. Verify SSH probe access from the NMS host: `ssh -i <ssh_key> <user>@<address> hostname`
-3. Restart poller: `systemctl restart nms-nova-poller`
-4. Confirm `service_up` goes green on the dashboard within one poll interval
+Preferred path:
+1. Open `/targets` in the dashboard
+2. Click **Add target**
+3. Enter name, address, kind, probe type, tier, SSH key path, and enabled metrics
+4. Save
+
+Legacy YAML path still works on first run:
+1. Copy `targets.yaml.example` to `targets.yaml`
+2. Add target blocks with metrics and intervals
+3. On next poller start, targets are imported into SQLite automatically
+
+Verify:
+- Target appears on `/targets`
+- `service_up` goes green on the dashboard within one poll interval
+
+### Edit a target
+1. Open `/targets`
+2. Click **Edit** on the target
+3. Update fields/metrics/SSH key path
+4. Save
+5. Poller picks up changes on next cycle
 
 ### Remove a target
-1. Stop the poller: `systemctl stop nms-nova-poller`
-2. Run the purge script: `/opt/nms-nova/.venv/bin/python3 scripts/purge_target.py <target_name>`
-3. Remove the target block from `targets.yaml`
-4. Restart the poller: `systemctl restart nms-nova-poller`
+1. Open `/targets`
+2. Click **Delete** on the target
+3. Confirm
+4. Or run: `/opt/nms-nova/.venv/bin/python3 scripts/purge_target.py <target_name>`
+
+Note: deleting from the UI or script removes the target and all its historical samples from SQLite.
 
 ### Telegram alerts
 Set these environment variables in the service unit or compose file:
@@ -52,5 +61,15 @@ Alerts are posted when rules in `state/alerts.py` trigger.
 
 ## Troubleshooting
 - 502 at public URL: check `systemctl status nms-nova-fastapi`, reverse proxy config, and tunnel/proxy upstream
-- Missing metrics: verify poller service active and `targets.yaml` targets reachable
+- Missing metrics: verify poller service active and targets visible on `/targets`
+- Service showing DOWN: verify target address/kind/SSH key path and probe command on the target
 - Disk full: run retention manually or prune old backups in `/opt/nms-nova/backups`
+
+## Release Notes
+### v0.2.0
+- SQLite-backed target management UI at `/targets`
+- Add/edit/delete targets via web UI
+- YAML→SQLite migration on first run
+- Per-target SSH key support
+- Mobile layout fixes for edit/add forms
+- Poller preserves metric-specific params (`service_name`, `container_name`, `interface`)

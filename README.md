@@ -4,11 +4,15 @@ Lightweight, agentless, read-only network monitoring for homelabs and small netw
 
 NMS-Nova is built around one constraint: **no agents on the targets**. It probes hosts over SSH/LXC and stores time-series metrics in SQLite. The result is a simple, self-hosted monitoring stack that stays out of the way and doesn’t create a copyleft dependency problem.
 
+**Current version:** v0.2.0
+
 ## Features
 
 - **Agentless SSH/LXC probes** — no software install on targets
 - **SQLite + WAL** — single-file state, easy backup/restore
 - **Chart.js dashboard** — 24h / 7d / 30d trends with light/dark theme
+- **Target management UI** — add/edit/delete targets via `/targets`
+- **SQLite source of truth** — targets/metrics defined in web UI or imported from YAML
 - **Alert engine** — evaluate rules against live samples
 - **Telegram alerts** — built-in bot delivery via `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
 - **Generic webhooks** — POST alert payloads to any endpoint via `NMS_WEBHOOK_URL`
@@ -19,19 +23,20 @@ NMS-Nova is built around one constraint: **no agents on the targets**. It probes
 ## Architecture
 
 ```
-targets.yaml
+/targets UI
     |
     v
-nms-nova-poller.service  --->  SQLite state
-    |
-    v
-nms-nova-fastapi.service --->  Dashboard /chart /alerts /metrics
-    |
-    +---> Telegram Bot API
-    +---> Generic webhook endpoint
+nms-nova-fastapi.service ---> SQLite state <--- nms-nova-poller.service
+                                      |
+                                      +---> Telegram Bot API
+                                      +---> Generic webhook endpoint
 ```
 
 **Probes are read-only.** They use SSH command execution or `lxc-attach` to collect metrics. No configuration changes, no package installs, no persistent agent state on targets.
+
+**Primary workflow:** add/edit targets via `/targets`. Legacy YAML import is supported on first run if `targets.yaml` is present.
+
+> **Security:** `targets.yaml` contains host-specific values and remains git-ignored. Do not commit it to version control.
 
 ## Install
 
