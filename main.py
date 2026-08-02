@@ -26,7 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = BASE_DIR / "state" / "nms-nova.db"
 
 store = state.store.MetricsStore(os.getenv("NMS_DB", str(DEFAULT_DB)))
-app = FastAPI(title="NMS-Nova", version="0.1.5")
+app = FastAPI(title="NMS-Nova", version="0.2.0")
 security = HTTPBasic()
 
 BEARER_TOKEN = os.getenv("NMS_API_TOKEN", "")
@@ -121,11 +121,7 @@ def _render_dashboard() -> str:
         targets.setdefault(row["target_name"], []).append(row)
     alerts = _evaluate_alerts()
 
-    cfg = yaml.safe_load((BASE_DIR / "targets.yaml").read_text())
-    target_map = {}
-    for t in cfg.get("targets", []):
-        target_map[t["name"]] = t
-
+    target_map = {t["name"]: t for t in store.list_targets()}
     tier_map = {name: t.get("tier", "T2") for name, t in target_map.items()}
     cards = []
     for target_name, metrics in sorted(targets.items()):
@@ -271,7 +267,7 @@ def _render_dashboard() -> str:
 <body>
   <header>
     <div><div class='brand'>NMS-Nova</div><div class='meta'>v{app.version}</div></div>
-    <div class='meta'>{len(targets)} targets</div>
+    <div class='meta'>{len(targets)} targets · <a href='/targets' style='color:var(--accent)'>Manage</a></div>
   </header>
   <main hx-get='/' hx-trigger='every 15s' hx-swap='innerHTML'>
     {body if body else "<div class='empty'>No data yet</div>"}
@@ -418,3 +414,208 @@ async def metrics_prometheus():
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return HTMLResponse(_render_dashboard())
+
+
+# --- Target management UI ---
+
+TARGET_KINDS = ("lxc", "ssh", "docker")
+METRIC_OPTIONS = [
+    ("cpu_usage_percent", "CPU %"),
+    ("memory_used_percent", "Memory %"),
+    ("disk_root_used_percent", "Disk %"),
+    ("service_up", "Service up"),
+    ("load_avg_1m", "Load avg 1m"),
+    ("interface_total_kbps", "Interface kbps"),
+]
+
+
+def _target_form(target: dict | None = None, metrics: list[dict] | None = None) -> str:
+    name = target.get("name", "") if target else ""
+    kind = target.get("kind", "lxc") if target else "lxc"
+    address = target.get("address", "") if target else ""
+    probe_type = target.get("probe_type", kind) if target else kind
+    tier = target.get("tier", "T2") if target else "T2"
+    selected_metrics = {m["name"] for m in (metrics or [])}
+    metric_checks = "".join(
+        "<label><input type='checkbox' name='metrics' value='%s' %s> %s</label>" % (n, "checked" if n in selected_metrics else "", lbl)
+        for n, lbl in METRIC_OPTIONS
+    )
+    ssh_key = target.get("ssh_key", "") if target else ""
+    kind_opts = "".join("<option value='%s' %s>%s</option>" % (k, "selected" if kind == k else "", k) for k in TARGET_KINDS)
+    probe_opts = "".join("<option value='%s' %s>%s</option>" % (k, "selected" if probe_type == k else "", k) for k in TARGET_KINDS)
+    tier_opts = "".join("<option value='%s' %s>%s</option>" % (t, "selected" if tier == t else "", t) for t in ("T1", "T2"))
+    if target:
+        action = "/targets/%s" % target["id"]
+        method = 'hx-put="true"'
+    else:
+        action = "/targets"
+        method = ""
+    return """
+    <form hx-post='%s' %s hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>Name</label><input name='name' value='%s' required></div>
+      <div class='field'><label>Kind</label><select name='kind'>%s</select></div>
+      <div class='field'><label>Address</label><input name='address' value='%s' required></div>
+      <div class='field'><label>Probe type</label><select name='probe_type'>%s</select></div>
+      <div class='field'><label>Tier</label><select name='tier'>%s</select></div>
+      <div class='field'><label>SSH key path</label><input name='ssh_key' value='%s'></div>
+      <div class='field'><label>Metrics</label><div class='checks'>%s</div></div>
+      <button type='submit'>Save</button> <button type='button' hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
+    </form>
+    """ % (action, method, name, kind_opts, address, probe_opts, tier_opts, ssh_key, metric_checks)
+
+
+@app.get("/targets")
+async def list_targets_ui():
+    rows = store.list_targets()
+    cards = "".join(
+        f"<div class='card'><div class='card-header'><span class='card-title'>{t['name']}</span>"
+        f"<span class='tier-badge tier-{t.get('tier','T2').lower()}'>{t.get('tier','T2')}</span></div>"
+        f"<div class='card-body'><div class='card-meta'>{t.get('kind','')} / {t.get('address','')}</div>"
+        f"<div class='actions'><a class='button' href='/targets/{t['id']}/edit'>Edit</a> "
+        f"<button class='button' hx-delete='/targets/{t['id']}' hx-confirm='Delete {t['name']}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button></div></div></div>"
+        for t in rows
+    )
+    body = (
+        "<div class='page-header'><h2>Targets</h2><button hx-get='/targets/new' hx-target='#main-content' hx-swap='innerHTML'>Add target</button></div>"
+        "<div class='grid'>" + (cards or "<div class='empty'>No targets</div>") + "</div>"
+    )
+    return HTMLResponse(_layout("Targets", body))
+
+
+@app.get("/targets/new")
+async def new_target_form():
+    return HTMLResponse(_layout("New target", _target_form()))
+
+
+@app.get("/targets/{target_id}/edit")
+async def edit_target_form(target_id: int):
+    target = store.get_target(target_id)
+    if not target:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    metrics = store.list_metrics_for_target(target_id)
+    return HTMLResponse(_layout("Edit " + target["name"], _target_form(target=target, metrics=metrics)))
+
+
+@app.post("/targets")
+async def create_target(request: Request):
+    form = await request.form()
+    target_id = store.create_target(
+        name=form.get("name", ""),
+        kind=form.get("kind", "lxc"),
+        address=form.get("address", ""),
+        probe_type=form.get("probe_type", form.get("kind", "lxc")),
+        tier=form.get("tier", "T2"),
+        ssh_key=form.get("ssh_key"),
+    )
+    metrics = form.getlist("metrics")
+    for name in metrics:
+        store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60)
+    return HTMLResponse(_post_save_redirect(f"/targets/{target_id}/edit"))
+
+
+@app.put("/targets/{target_id}")
+async def update_target(target_id: int, request: Request):
+    target = store.get_target(target_id)
+    if not target:
+        return HTMLResponse("<div class='empty'>Not found</div>", status_code=404)
+    form = await request.form()
+    store.update_target(
+        target_id,
+        name=form.get("name", target["name"]),
+        kind=form.get("kind", target["kind"]),
+        address=form.get("address", target["address"]),
+        probe_type=form.get("probe_type", form.get("kind")),
+        tier=form.get("tier", target.get("tier", "T2")),
+        ssh_key=form.get("ssh_key", target.get("ssh_key")),
+    )
+    existing = {m["name"] for m in store.list_metrics_for_target(target_id)}
+    requested = set(form.getlist("metrics"))
+    for name in existing - requested:
+        for m in store.list_metrics_for_target(target_id):
+            if m["name"] == name:
+                store.delete_metric(m["id"])
+    for name in requested - existing:
+        store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60)
+    return HTMLResponse(_post_save_redirect(f"/targets/{target_id}/edit"))
+
+
+@app.delete("/targets/{target_id}")
+async def delete_target(target_id: int):
+    store.delete_target(target_id)
+    return HTMLResponse(_post_save_redirect("/targets"))
+
+
+def _post_save_redirect(location: str) -> str:
+    return f"<div hx-redirect='{location}'></div>"
+
+
+def _layout(title: str, body: str) -> str:
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1' />
+  <title>NMS-Nova - {title}</title>
+  <script src='https://unpkg.com/htmx.org@2.0.0'></script>
+  <style>
+    :root {{
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --card-bg: #ffffff;
+      --text: #1f2328;
+      --muted: #57606a;
+      --border: #d0d7de;
+      --accent: #0969da;
+      --ok: #0a0;
+      --warn: #b90;
+      --crit: #cf222e;
+      --shadow: rgba(31, 35, 40, 0.06);
+    }}
+    @media (prefers-color-scheme: dark) {{
+      :root {{
+        --bg: #0d1117;
+        --card-bg: #161b22;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --border: #30363d;
+        --shadow: rgba(0, 0, 0, 0.4);
+      }}
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }}
+    header {{ padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap: 1rem; background: var(--card-bg); }}
+    .brand {{ font-weight: 800; letter-spacing: -0.02em; font-size: 1.1rem; }}
+    .meta {{ color: var(--muted); font-size: 0.85rem; }}
+    main {{ padding: 1.5rem; }}
+    .page-header {{ display:flex; justify-content:space-between; align-items:center; gap: 1rem; margin-bottom: 1rem; }}
+    .grid {{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
+    .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; box-shadow: 0 2px 0 var(--shadow); }}
+    .card-header {{ display:flex; justify-content:space-between; align-items:center; gap: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }}
+    .card-title {{ font-weight: 700; font-size: 1rem; word-break: break-word; }}
+    .tier-badge {{ font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }}
+    .tier-t1 {{ color: #1a7f37; border-color: #1a7f37; background: rgba(26,127,55,0.08); }}
+    .tier-t2 {{ color: #57606a; }}
+    .card-meta {{ color: var(--muted); font-size: 0.85rem; word-break: break-all; }}
+    .actions {{ display:flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }}
+    .field {{ display:flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.9rem; }}
+    .field label {{ font-size: 0.85rem; color: var(--muted); }}
+    .field input, .field select {{ padding: 0.55rem 0.6rem; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }}
+    .checks {{ display: grid; gap: 0.35rem; }}
+    button, .button {{ padding: 0.55rem 0.75rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer; }}
+    .empty {{ color: var(--muted); }}
+    @media (max-width: 640px) {{
+      form > div, form {{ width: 100%; }}
+      .field input, .field select {{ width: 100%; }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div><a class='brand' href='/' style='color:var(--text);text-decoration:none'>NMS-Nova</a></div>
+    <div class='meta'>{title}</div>
+  </header>
+  <main id='main-content'>
+    {body}
+  </main>
+</body>
+</html>"""

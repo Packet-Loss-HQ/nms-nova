@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 NMS-Nova poll loop.
-Reads targets + metric definitions, runs probes on tier-aware intervals,
+Reads targets + metric definitions from SQLite, runs probes on tier-aware intervals,
 writes samples to SQLite. Designed to run as a container PID 1 or cron.
 """
 
+import json
 import logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("nms-nova.poller")
@@ -42,12 +43,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_TARGETS_PATH = BASE_DIR / "targets.yaml"
 
 
-def load_targets(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"targets": []}
-    return yaml.safe_load(path.read_text())
-
-
 def _resolve_vars(cfg: dict[str, Any]) -> dict[str, Any]:
     defaults = cfg.get("defaults", {})
     text = yaml.safe_dump(cfg, default_flow_style=False)
@@ -56,92 +51,49 @@ def _resolve_vars(cfg: dict[str, Any]) -> dict[str, Any]:
     return yaml.safe_load(text)
 
 
-def build_target_map(targets_cfg: dict[str, Any]) -> dict[str, dict]:
-    out = {}
-    for t in targets_cfg.get("targets", []):
-        out[t["name"]] = t
-    return out
+def migrate_yaml_if_needed(store: MetricsStore, targets_path: Path) -> None:
+    targets = store.list_targets()
+    if targets:
+        return
+    if not targets_path.exists():
+        return
+    cfg = _resolve_vars(yaml.safe_load(targets_path.read_text()))
+    if not cfg.get("targets"):
+        return
+    log.info("migrating targets.yaml -> sqlite")
+    store.import_targets_from_yaml(cfg)
 
 
-def validate_targets(cfg: dict[str, Any]) -> list[str]:
-    errors = []
-    targets = cfg.get("targets", [])
-    if not isinstance(targets, list):
-        return ["targets must be a list"]
-    seen = set()
-    for idx, t in enumerate(targets):
-        prefix = f"targets[{idx}]"
-        if not isinstance(t, dict):
-            errors.append(f"{prefix} must be a mapping")
+def run_once(store: MetricsStore, runner: ProbeRunner) -> None:
+    targets = store.list_targets()
+    if not targets:
+        log.warning("no targets configured")
+        return
+
+    target_map = {}
+    for t in targets:
+        if not t.get("enabled", 1):
             continue
-        name = t.get("name")
-        if not name or not isinstance(name, str):
-            errors.append(f"{prefix}.name is required")
-        elif name in seen:
-            errors.append(f"{prefix}.name '{name}' is duplicated")
-        else:
-            seen.add(name)
-        for key in ("address", "kind", "probe_type", "tier"):
-            if key not in t:
-                errors.append(f"{prefix}.{key} is required")
-        metrics = t.get("metrics")
-        if not isinstance(metrics, list) or not metrics:
-            errors.append(f"{prefix}.metrics must be a non-empty list")
-            continue
-        for m_idx, m in enumerate(metrics):
-            m_prefix = f"{prefix}.metrics[{m_idx}]"
-            if not isinstance(m, dict):
-                errors.append(f"{m_prefix} must be a mapping")
-                continue
-            if "name" not in m:
-                errors.append(f"{m_prefix}.name is required")
-            if "interval_sec" not in m:
-                errors.append(f"{m_prefix}.interval_sec is required")
-            elif not isinstance(m["interval_sec"], int):
-                errors.append(f"{m_prefix}.interval_sec must be int")
-    return errors
-
-
-def run_once(store: MetricsStore, targets_path: Path, runner: ProbeRunner) -> None:
-    cfg = _resolve_vars(load_targets(targets_path))
-    target_map = build_target_map(cfg)
-
-    for name, t in target_map.items():
-        store.upsert_target(
-            name=name,
-            kind=t.get("kind", "lxc"),
-            address=t.get("address", name),
-            probe_type=t.get("probe_type", t.get("kind", "lxc")),
-            tier=t.get("tier", "T2"),
-        )
+        target_map[t["name"]] = t
 
     latest = store.latest_samples()
     target_ids = {row["target_name"]: row["target_id"] for row in latest}
-    for name in target_map:
-        if name not in target_ids:
-            tid = store.upsert_target(
-                name=name,
-                kind=target_map[name].get("kind", "lxc"),
-                address=target_map[name].get("address", name),
-                probe_type=target_map[name].get("probe_type", target_map[name].get("kind", "lxc")),
-                tier=target_map[name].get("tier", "T2"),
-            )
-            target_ids[name] = tid
 
     con = __import__("sqlite3").connect(store.db_path)
     con.row_factory = __import__("sqlite3").Row
     try:
         existing_defs = {}
-        for row in con.execute("SELECT id, target_id, name FROM metric_definitions").fetchall():
+        for row in con.execute("SELECT id, target_id, name, params FROM metric_definitions").fetchall():
             existing_defs[(row["target_id"], row["name"])] = row["id"]
+
         for name, t in target_map.items():
-            tid = target_ids[name]
-            for m in t.get("metrics", []):
-                key = (tid, m["name"])
+            metrics = store.list_metrics_for_target(t["id"])
+            for m in metrics:
+                key = (t["id"], m["name"])
                 if key not in existing_defs:
                     cur = con.execute(
-                        "INSERT INTO metric_definitions(target_id, name, unit, poll_interval_sec) VALUES(?,?,?,?)",
-                        (tid, m["name"], m.get("unit"), int(m.get("interval_sec", 60))),
+                        "INSERT INTO metric_definitions(target_id, name, unit, poll_interval_sec, enabled, params) VALUES(?,?,?,?,?,?)",
+                        (t["id"], m["name"], m.get("unit"), int(m.get("poll_interval_sec", 60)), 1, m.get("params")),
                     )
                     existing_defs[key] = cur.lastrowid
         con.commit()
@@ -149,38 +101,46 @@ def run_once(store: MetricsStore, targets_path: Path, runner: ProbeRunner) -> No
         con.close()
 
     for name, t in target_map.items():
-        tid = target_ids[name]
+        tid = t["id"]
+        metrics = store.list_metrics_for_target(tid)
         runner = ProbeRunner(
             timeout_sec=10,
             ssh_key=t.get("ssh_key"),
         )
-        for m in t.get("metrics", []):
+        for m in metrics:
             key = (tid, m["name"])
             if key not in existing_defs:
                 continue
-            defn = existing_defs[key]
+            definition_id = existing_defs[key]
             fn = PROBE_MAP.get(m["name"])
             if not fn:
                 continue
+            probe_kwargs = {}
+            if m.get("params"):
+                try:
+                    probe_kwargs = json.loads(m["params"])
+                except Exception:
+                    probe_kwargs = {}
             try:
                 result = fn(
                     runner,
                     target_id=tid,
-                    definition_id=defn,
+                    definition_id=definition_id,
                     target_kind=t.get("kind", "lxc"),
                     target_address=t.get("address", name),
-                    service_name=m.get("service_name", ""),
-                    container_name=m.get("container_name", ""),
+                    service_name=probe_kwargs.get("service_name", ""),
+                    container_name=probe_kwargs.get("container_name", ""),
+                    interface=probe_kwargs.get("interface", "eth0"),
+                    **{k: v for k, v in probe_kwargs.items() if k not in ("service_name", "container_name", "interface")},
                 )
                 store.insert_sample(result.target_id, result.definition_id, result.value, error=result.error)
             except Exception as exc:
                 log.exception("probe_failed target=%s metric=%s", name, m["name"])
-                store.insert_sample(tid, defn, 0.0, error=str(exc))
+                store.insert_sample(tid, definition_id, 0.0, error=str(exc))
 
 
 class PollLoop:
-    def __init__(self, targets_path: Path, db_path: Path, poll_interval: int = 30):
-        self.targets_path = targets_path
+    def __init__(self, db_path: Path, poll_interval: int = 30):
         self.store = MetricsStore(str(db_path))
         self.runner = ProbeRunner(timeout_sec=10)
         self.poll_interval = poll_interval
@@ -194,24 +154,21 @@ class PollLoop:
         signal.signal(signal.SIGTERM, self.stop)
         while self._running:
             try:
-                run_once(self.store, self.targets_path, self.runner)
+                run_once(self.store, self.runner)
             except Exception:
                 pass
             time.sleep(self.poll_interval)
 
 
 def main() -> int:
-    targets_path = Path(os.getenv("NMS_TARGETS", str(DEFAULT_TARGETS_PATH)))
     db_path = Path(os.getenv("NMS_DB", "state/nms-nova.db"))
+    targets_path = Path(os.getenv("NMS_TARGETS", str(DEFAULT_TARGETS_PATH)))
     poll_interval = int(os.getenv("NMS_POLL_INTERVAL", "30"))
-    cfg = load_targets(targets_path)
-    errors = validate_targets(cfg)
-    if errors:
-        print("targets.yaml validation failed:")
-        for e in errors:
-            print(f" - {e}")
-        return 2
-    PollLoop(targets_path=targets_path, db_path=db_path, poll_interval=poll_interval).start()
+
+    store = MetricsStore(str(db_path))
+    migrate_yaml_if_needed(store, targets_path)
+
+    PollLoop(db_path=db_path, poll_interval=poll_interval).start()
     return 0
 
 

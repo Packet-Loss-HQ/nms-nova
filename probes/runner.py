@@ -26,7 +26,8 @@ class ProbeRunner:
         self.ssh_user = ssh_user
         self.ssh_key = ssh_key
 
-    def run(self, command: str, target_kind: str, target_address: str) -> str:
+    def run(self, command: str, target_kind: str, target_address: str, ssh_key: Optional[str] = None) -> str:
+        key = ssh_key or self.ssh_key
         if target_kind == "lxc":
             args = ["lxc-attach", "-n", target_address, "--", "bash", "-c", command]
         elif target_kind == "ssh":
@@ -35,8 +36,8 @@ class ProbeRunner:
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "ConnectTimeout=5",
             ]
-            if self.ssh_key:
-                args.extend(["-i", self.ssh_key])
+            if key:
+                args.extend(["-i", key])
             args.append(f"{self.ssh_user}@{target_address}")
             args.append(command)
         else:

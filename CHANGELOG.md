@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.0 - 2026-08-02
+- SQLite-backed target management UI
+- Add/edit/delete targets via `/targets`
+- YAML→SQLite migration on first run
+- Per-target SSH key support
+- Mobile layout fixes for edit form
+
 ## v0.1.5 - 2026-08-02
 - Add Telegram alert delivery via bot token / chat ID env vars
 - Add `scripts/purge_target.py` for removing targets and their historical data
