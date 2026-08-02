@@ -972,12 +972,18 @@ def _post_save_redirect(location: str) -> str:
 def _layout(title: str, body: str, status_code: int = 200) -> str:
     import secrets
     csrf = secrets.token_urlsafe(16)
+    _brand = store.get_branding_settings()
+    _brand_title = _brand.get("brand_title") or "NMS-Nova"
+    _brand_css = _brand.get("brand_css_url")
+    _page_title = f"{_brand_title} - {title}"
+    _head = f"""<link rel='stylesheet' href='{_brand_css}' />""" if _brand_css else ""
     return f"""<!doctype html>
 <html>
 <head>
   <meta charset='utf-8' />
   <meta name='viewport' content='width=device-width, initial-scale=1' />
-  <title>NMS-Nova - {title}</title>
+  <title>{_page_title}</title>
+  {_head}
   <script src='https://unpkg.com/htmx.org@2.0.0'></script>
   <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
   <script src='/static/detail.js'></script>
@@ -1047,7 +1053,7 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
 <body>
   <header>
     <div class='topbar'>
-      <a class='brand' href='/'>NMS-Nova</a>
+      <a class='brand' href='/'>{_brand_title}</a>
       <button class='nav-toggle' id='nav-toggle' aria-expanded='false' aria-controls='main-nav'>Menu</button>
     </div>
     <nav id='main-nav'>
@@ -1055,6 +1061,7 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
       <a href='/targets'>Targets</a>
       <a href='/alerts'>Alerts</a>
       <a href='/settings-v2'>Settings</a>
+      <a href='/settings/branding'>Branding</a>
     </nav>
   </header>
   <main id='main-content'>
@@ -1179,5 +1186,64 @@ def api_create_token(request: Request, token: str = "", scope: str = "read"):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
     token_id = store.create_api_token(token=token or __import__("secrets").token_urlsafe(32), scope=scope)
     return JSONResponse({"id": token_id, "token": token or __import__("secrets").token_urlsafe(32), "scope": scope})
+
+
+
+@api_router.get("/branding")
+def api_get_branding():
+    settings = store.get_branding_settings()
+    return JSONResponse({
+        "product_name": settings.get("product_name", "NMS-Nova"),
+        "brand_title": settings.get("brand_title", "NMS-Nova"),
+        "brand_css_url": settings.get("brand_css_url"),
+        "hide_powered_by": bool(settings.get("hide_powered_by")),
+        "license_mode": settings.get("license_mode", "mit"),
+    })
+
+
+@api_router.post("/branding")
+def api_save_branding(request: Request, body: dict = {}):
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    store.save_branding_settings(body)
+    return JSONResponse({"status": "ok"})
+
+
+
+@app.get("/settings/branding")
+async def branding_form():
+    settings = store.get_branding_settings()
+    body = f"""
+    <div class='page-header'><h2>Branding</h2></div>
+    <form hx-post='/settings/branding' hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>Product name</label><input name='product_name' value='{settings.get('product_name','NMS-Nova')}'></div>
+      <div class='field'><label>Brand title</label><input name='brand_title' value='{settings.get('brand_title','NMS-Nova')}'></div>
+      <div class='field'><label>Custom CSS URL</label><input name='brand_css_url' value='{settings.get('brand_css_url') or ''}' placeholder='https://example.com/brand.css'></div>
+      <div class='field'><label>License mode</label><select name='license_mode'>
+        <option value='mit' {'selected' if settings.get('license_mode')=='mit' else ''}>MIT</option>
+        <option value='commercial' {'selected' if settings.get('license_mode')=='commercial' else ''}>Commercial</option>
+      </select></div>
+      <div class='field'><label><input type='checkbox' name='hide_powered_by' {'checked' if settings.get('hide_powered_by') else ''}> Hide powered-by line</label></div>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
+      <button type='submit'>Save branding</button>
+    </form>
+    """
+    return HTMLResponse(_layout("Branding", body))
+
+
+@app.post("/settings/branding")
+async def save_branding(request: Request):
+    form = await request.form()
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    store.save_branding_settings({
+        "product_name": form.get("product_name", "NMS-Nova"),
+        "brand_title": form.get("brand_title", "NMS-Nova"),
+        "brand_css_url": form.get("brand_css_url") or None,
+        "hide_powered_by": form.get("hide_powered_by") == "on",
+        "license_mode": form.get("license_mode", "mit"),
+    })
+    return HTMLResponse(_post_save_redirect("/settings/branding"))
 
 app.include_router(api_router)

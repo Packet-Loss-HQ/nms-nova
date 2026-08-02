@@ -121,6 +121,20 @@ class MetricsStore:
                 )
                 """
             )
+
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS branding_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    product_name TEXT NOT NULL DEFAULT 'NMS-Nova',
+                    brand_title TEXT NOT NULL DEFAULT 'NMS-Nova',
+                    brand_css_url TEXT,
+                    hide_powered_by BOOLEAN NOT NULL DEFAULT 0,
+                    license_mode TEXT NOT NULL DEFAULT 'mit'
+                )
+                """
+            )
+
             con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS delivery_settings (
@@ -364,6 +378,47 @@ class MetricsStore:
         try:
             rows = con.execute("SELECT * FROM delivery_log ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def get_branding_settings(self) -> dict:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM branding_settings WHERE id = 1").fetchone()
+            return dict(row) if row else {
+                "product_name": "NMS-Nova",
+                "brand_title": "NMS-Nova",
+                "brand_css_url": None,
+                "hide_powered_by": False,
+                "license_mode": "mit",
+            }
+        finally:
+            con.close()
+
+    def save_branding_settings(self, settings: dict) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                """
+                INSERT INTO branding_settings(id, product_name, brand_title, brand_css_url, hide_powered_by, license_mode)
+                VALUES(1, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    product_name=excluded.product_name,
+                    brand_title=excluded.brand_title,
+                    brand_css_url=excluded.brand_css_url,
+                    hide_powered_by=excluded.hide_powered_by,
+                    license_mode=excluded.license_mode
+                """,
+                (
+                    settings.get("product_name", "NMS-Nova"),
+                    settings.get("brand_title", "NMS-Nova"),
+                    settings.get("brand_css_url"),
+                    1 if settings.get("hide_powered_by") else 0,
+                    settings.get("license_mode", "mit"),
+                ),
+            )
+            con.commit()
         finally:
             con.close()
 
