@@ -26,7 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = BASE_DIR / "state" / "nms-nova.db"
 
 store = state.store.MetricsStore(os.getenv("NMS_DB", str(DEFAULT_DB)))
-app = FastAPI(title="NMS-Nova", version="0.1.4")
+app = FastAPI(title="NMS-Nova", version="0.1.5")
 security = HTTPBasic()
 
 BEARER_TOKEN = os.getenv("NMS_API_TOKEN", "")
