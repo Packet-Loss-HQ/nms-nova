@@ -15,7 +15,10 @@ def retention_cleanup(db_path: Path, retention_days: int = 30) -> int:
     con = sqlite3.connect(db_path)
     try:
         cutoff = datetime.utcnow() - timedelta(days=retention_days)
-        cur = con.execute("DELETE FROM metric_samples WHERE timestamp < ?", (cutoff.isoformat(),))
+        cur = con.execute(
+            "DELETE FROM metric_samples WHERE timestamp < ?",
+            (cutoff.isoformat(),),
+        )
         deleted = cur.rowcount
         con.commit()
         return deleted
@@ -50,12 +53,14 @@ def downsample(db_path: Path, lookback_days: int = 30) -> int:
         cutoff = datetime.utcnow() - timedelta(days=lookback_days)
         rows = con.execute(
             """
-            SELECT target_id, definition_id,
-                   strftime('%Y-%m-%d %H:00:00', timestamp) AS hour_bucket,
-                   avg(value) AS avg_value
-            FROM metric_samples
-            WHERE timestamp >= ? AND metric_definitions.name != 'service_up'
-            GROUP BY target_id, definition_id, hour_bucket
+            SELECT ms.target_id,
+                   ms.definition_id,
+                   strftime('%Y-%m-%d %H:00:00', ms.timestamp) AS hour_bucket,
+                   avg(ms.value) AS avg_value
+            FROM metric_samples ms
+            JOIN metric_definitions md ON md.id = ms.definition_id
+            WHERE ms.timestamp >= ?
+            GROUP BY ms.target_id, ms.definition_id, hour_bucket
             """,
             (cutoff.isoformat(),),
         ).fetchall()
