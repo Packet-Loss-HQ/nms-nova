@@ -244,7 +244,7 @@ def _render_dashboard() -> str:
     .tier-t1 {{ color: #1a7f37; border-color: #1a7f37; background: rgba(26,127,55,0.08); }}
     .tier-t2 {{ color: #57606a; }}
     .card-body {{ display: grid; gap: 0.35rem; }}
-    .metric-row {{ display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; }}
+    .metric-row {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; }}
     .metric-name {{ color: var(--muted); font-size: 0.88rem; }}
     .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
     .chart-container {{ margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px dashed var(--border); }}
@@ -652,6 +652,9 @@ def _layout(title: str, body: str) -> str:
     .field label {{ font-size: 0.85rem; color: var(--muted); }}
     .field input, .field select {{ padding: 0.55rem 0.6rem; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }}
     .checks {{ display: grid; gap: 0.35rem; }}
+    .metric-row {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; }}
+    .metric-name {{ color: var(--muted); font-size: 0.85rem; }}
+    .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
     button, .button {{ padding: 0.55rem 0.75rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer; }}
     .empty {{ color: var(--muted); }}
     @media (max-width: 640px) {{
