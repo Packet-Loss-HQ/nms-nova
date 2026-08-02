@@ -21,6 +21,25 @@ systemctl restart nms-nova-poller
 systemctl restart nms-nova-fastapi
 ```
 
+### Add a target
+1. Add the target block to `targets.yaml`
+2. Verify SSH probe access from the NMS host: `ssh -i <ssh_key> <user>@<address> hostname`
+3. Restart poller: `systemctl restart nms-nova-poller`
+4. Confirm `service_up` goes green on the dashboard within one poll interval
+
+### Remove a target
+1. Stop the poller: `systemctl stop nms-nova-poller`
+2. Run the purge script: `/opt/nms-nova/.venv/bin/python3 scripts/purge_target.py <target_name>`
+3. Remove the target block from `targets.yaml`
+4. Restart the poller: `systemctl restart nms-nova-poller`
+
+### Telegram alerts
+Set these environment variables in the service unit or compose file:
+- `NMS_WEBHOOK_URL` — optional generic webhook
+- `TELEGRAM_BOT_TOKEN` — Telegram bot token
+- `TELEGRAM_CHAT_ID` — target chat/user ID
+Alerts are posted when rules in `state/alerts.py` trigger.
+
 ### Backup
 ```
 /opt/nms-nova/.venv/bin/python3 scripts/backup_restore.py backup

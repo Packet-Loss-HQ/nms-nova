@@ -26,11 +26,13 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = BASE_DIR / "state" / "nms-nova.db"
 
 store = state.store.MetricsStore(os.getenv("NMS_DB", str(DEFAULT_DB)))
-app = FastAPI(title="NMS-Nova", version="0.1.0")
+app = FastAPI(title="NMS-Nova", version="0.1.4")
 security = HTTPBasic()
 
 BEARER_TOKEN = os.getenv("NMS_API_TOKEN", "")
 WEBHOOK_URL = os.getenv("NMS_WEBHOOK_URL", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
 def _is_api_request(request: Request) -> bool:
@@ -79,13 +81,25 @@ async def auth_middleware(request: Request, call_next):
 
 
 def _post_webhook(alerts: list[dict[str, Any]]) -> None:
-    if not WEBHOOK_URL or not alerts:
-        return
-    try:
-        payload = {"alerts": alerts, "source": "nms-nova"}
-        httpx.post(WEBHOOK_URL, json=payload, timeout=5)
-    except Exception:
-        pass
+    payload = {"alerts": alerts, "source": "nms-nova"}
+    if WEBHOOK_URL:
+        try:
+            httpx.post(WEBHOOK_URL, json=payload, timeout=5)
+        except Exception:
+            pass
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID and alerts:
+        try:
+            text = "\n".join(
+                f"⚠️ {a['description']}: {a['target_name']} / {a['metric_name']} = {a['value']}"
+                for a in alerts
+            )
+            httpx.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": text},
+                timeout=5,
+            )
+        except Exception:
+            pass
 
 
 def _evaluate_alerts() -> list[dict[str, Any]]:
