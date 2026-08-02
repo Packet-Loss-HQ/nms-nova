@@ -152,7 +152,7 @@ def _evaluate_alerts() -> list[dict[str, Any]]:
             {"target_name": a.target_name, "metric_name": a.metric_name, "value": a.value, "description": a.description}
             for a in alert_engine.evaluate(row["target_name"], row["metric_name"], row["value"])
         )
-    _post_webhook_with_settings(alerts, _delivery_settings)
+    _post_webhook_with_settings(alerts, _delivery_settings, rules=store.list_alert_rules())
     return alerts
 
 
@@ -527,9 +527,12 @@ async def settings_form():
         f"<option value='0' {'selected' if not s.get('webhook_enabled') else ''}>No</option>"
         "</select></div>"
         f"<div class='field'><label>Webhook URL</label><input name='webhook_url' value='{s.get('webhook_url','')}'></div>"
-        "<button type='submit'>Save</button></form></div></div>"
+        f"<div class='field'><label>Webhook secret (optional HMAC)</label><input type='password' name='webhook_secret' value='' placeholder='{'••••••••' if s.get('webhook_secret') else ''}' autocomplete='new-password'></div>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
+        "<div id='test-result'></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
-        "<div class='card-body'><button class='button' hx-post='/settings/test' hx-target='#main-content' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "<div class='card-body'><button class='button' hx-post='/settings/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'>"
         "</div>"
     )
     return HTMLResponse(_layout("Alert delivery", body))
@@ -538,12 +541,15 @@ async def settings_form():
 @app.post("/settings/delivery")
 async def save_delivery(request: Request):
     form = await request.form()
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
     settings = {
         "telegram_enabled": form.get("telegram_enabled") == "1",
         "telegram_bot_token": form.get("telegram_bot_token", ""),
         "telegram_chat_id": form.get("telegram_chat_id", ""),
         "webhook_enabled": form.get("webhook_enabled") == "1",
         "webhook_url": form.get("webhook_url", ""),
+        "webhook_secret": form.get("webhook_secret", ""),
     }
     store.save_delivery_settings(settings)
     global _delivery_settings
@@ -552,7 +558,17 @@ async def save_delivery(request: Request):
 
 
 @app.post("/settings/test")
-async def test_delivery():
+async def test_delivery(request: Request):
+    form = await request.form()
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    import time as _time
+    token = request.cookies.get("_csrf", "")
+    now = _time.time()
+    last = _last_test_ts.get(token, 0)
+    if now - last < 60:
+        return HTMLResponse("<div class='empty'>Rate limited. Wait 60 seconds before another test.</div>", status_code=429)
+    _last_test_ts[token] = now
     settings = store.get_delivery_settings()
     test_alerts = [{
         "target_name": "test",
@@ -560,21 +576,60 @@ async def test_delivery():
         "value": 1,
         "description": "Test alert delivery",
     }]
-    _post_webhook_with_settings(test_alerts, settings)
+    _post_webhook_with_settings(test_alerts, settings, rules=store.list_alert_rules())
     return HTMLResponse("<div class='empty'>Test sent. Check your Telegram/webhook destination.</div>")
 
 
-def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict) -> None:
-    payload = {"schema_version": 1, "alerts": alerts, "source": "nms-nova"}
-    destinations = []
-    if settings.get("webhook_enabled") and settings.get("webhook_url"):
+def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict, rules: list[dict[str, Any]] | None = None) -> None:
+    if not alerts:
+        return
+    # Alert dedup by (target, metric) within a 15-minute window
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for a in alerts:
+        key = (str(a.get("target_name")), str(a.get("metric_name")), str(a.get("description")))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(a)
+    if not deduped:
+        return
+
+    # Per-rule routing: filter alerts by rule.delivery if rules are provided
+    telegram_alerts: list[dict[str, Any]] = []
+    webhook_alerts: list[dict[str, Any]] = []
+    if rules:
+        rule_map = {r["metric_name"]: r for r in rules}
+        for a in deduped:
+            rule = rule_map.get(a.get("metric_name"))
+            delivery = (rule or {}).get("delivery", "all")
+            if delivery == "telegram":
+                telegram_alerts.append(a)
+            elif delivery == "webhook":
+                webhook_alerts.append(a)
+            else:
+                telegram_alerts.append(a)
+                webhook_alerts.append(a)
+    else:
+        telegram_alerts = deduped[:]
+        webhook_alerts = deduped[:]
+
+    destinations: list[tuple[str, str, dict]] = []
+    if settings.get("webhook_enabled") and settings.get("webhook_url") and webhook_alerts:
+        payload = {"schema_version": 1, "alerts": webhook_alerts, "source": "nms-nova"}
+        if settings.get("webhook_secret"):
+            import hmac, hashlib, base64
+            sig = hmac.new(settings["webhook_secret"].encode(), base64.b64encode(str(payload).encode()), hashlib.sha256).hexdigest()
+            payload = dict(payload)
+            payload["hmac"] = sig
         destinations.append(("webhook", settings["webhook_url"], payload))
-    if settings.get("telegram_enabled") and settings.get("telegram_bot_token") and settings.get("telegram_chat_id") and alerts:
+    if settings.get("telegram_enabled") and settings.get("telegram_bot_token") and settings.get("telegram_chat_id") and telegram_alerts:
         text_out = "\n".join(
             f"⚠️ {a['description']}: {a['target_name']} / {a['metric_name']} = {a['value']}"
-            for a in alerts
+            for a in telegram_alerts
         )
         destinations.append(("telegram", f"https://api.telegram.org/bot{settings['telegram_bot_token']}/sendMessage", {"chat_id": settings["telegram_chat_id"], "text": text_out}))
+
     for kind, url, payload_or_json in destinations:
         status = 0
         error_text = None
@@ -589,7 +644,7 @@ def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict) ->
                 status = 0
                 error_text = str(exc)[:200]
         try:
-            store.log_delivery(kind, len(alerts), status, error_text)
+            store.log_delivery(kind, len(deduped), status, error_text)
         except Exception:
             pass
 

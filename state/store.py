@@ -84,6 +84,7 @@ class MetricsStore:
             con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS alert_rules (
+                delivery TEXT NOT NULL DEFAULT 'all',
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     metric_name TEXT NOT NULL,
                     threshold REAL NOT NULL,
@@ -358,6 +359,40 @@ class MetricsStore:
                 "INSERT INTO delivery_log(destination, alert_count, status, error) VALUES (?, ?, ?, ?)",
                 (destination, alert_count, status, error),
             )
+            con.commit()
+        except Exception:
+            pass
+        finally:
+            con.close()
+
+    def save_alert_rule(self, rule: dict) -> int:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            cur = con.execute("INSERT INTO alert_rules(metric_name, threshold, comparison, consecutive, description, enabled, delivery) VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                rule.get("metric_name"), rule.get("threshold"), rule.get("comparison", "gt"), rule.get("consecutive", 2), rule.get("description", ""), 1 if rule.get("enabled", True) else 0, rule.get("delivery", "all"),
+            ))
+            con.commit()
+            return cur.lastrowid
+        finally:
+            con.close()
+
+    def update_alert_rule(self, rule_id: int, rule: dict) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE alert_rules SET metric_name=?, threshold=?, comparison=?, consecutive=?, description=?, enabled=?, delivery=? WHERE id=?", (
+                rule.get("metric_name"), rule.get("threshold"), rule.get("comparison", "gt"), rule.get("consecutive", 2), rule.get("description", ""), 1 if rule.get("enabled", True) else 0, rule.get("delivery", "all"), rule_id,
+            ))
+            con.commit()
+        except Exception:
+            pass
+        finally:
+            con.close()
+
+    def log_delivery(self, destination: str, alert_count: int, status: int, error: str | None = None) -> None:
+        con = self._conn()
+        try:
+            con.execute("INSERT INTO delivery_log(destination, alert_count, status, error) VALUES (?, ?, ?, ?)", (destination, alert_count, status, error))
             con.commit()
         except Exception:
             pass
