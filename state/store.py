@@ -308,6 +308,27 @@ class MetricsStore:
             con.close()
 
 
+    def list_metric_definitions(self, target_id: Optional[int] = None) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            if target_id is None:
+                rows = con.execute("SELECT * FROM metric_definitions ORDER BY target_id, name").fetchall()
+            else:
+                rows = con.execute("SELECT * FROM metric_definitions WHERE target_id = ? ORDER BY name", (target_id,)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def recent_delivery_log(self, limit: int = 100) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("SELECT * FROM delivery_log ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
     def list_alert_rules(self) -> List[dict]:
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row

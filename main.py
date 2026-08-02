@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from secrets import compare_digest
@@ -1042,3 +1042,74 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
   </script>
 </body>
 </html>"""
+
+
+# ---------------------------
+# M12: /api/v1 JSON endpoints
+# ---------------------------
+from fastapi import APIRouter
+
+api_router = APIRouter(prefix="/api/v1")
+
+
+@api_router.get("/targets")
+def api_list_targets():
+    rows = store.list_targets()
+    return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.get("/targets/{target_id}")
+def api_get_target(target_id: int):
+    row = store.get_target(target_id)
+    if not row:
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    return JSONResponse(dict(row))
+
+
+@api_router.get("/targets/{target_id}/metrics")
+def api_get_target_metrics(target_id: int):
+    rows = store.list_metric_definitions(target_id)
+    return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.get("/metrics")
+def api_list_metrics():
+    con = store._connect()
+    try:
+        rows = con.execute("""
+            SELECT ms.id, ms.target_id, t.name AS target_name, ms.definition_id,
+                   md.name AS metric_name, md.unit, ms.value, ms.timestamp
+            FROM metric_samples ms
+            JOIN targets t ON t.id = ms.target_id
+            JOIN metric_definitions md ON md.id = ms.definition_id
+            ORDER BY ms.timestamp DESC
+            LIMIT 500
+        """).fetchall()
+        return JSONResponse([dict(r) for r in rows])
+    finally:
+        con.close()
+
+
+@api_router.get("/alerts/rules")
+def api_list_alert_rules():
+    rows = store.list_alert_rules()
+    return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.get("/alerts/delivery")
+def api_get_delivery_settings():
+    settings = store.get_delivery_settings()
+    return JSONResponse({
+        "telegram_enabled": bool(settings.get("telegram_enabled")),
+        "webhook_enabled": bool(settings.get("webhook_enabled")),
+        "webhook_url": settings.get("webhook_url", ""),
+    })
+
+
+@api_router.get("/alerts/delivery/log")
+def api_delivery_log(limit: int = 100):
+    rows = store.recent_delivery_log(limit)
+    return JSONResponse([dict(r) for r in rows])
+
+
+app.include_router(api_router)
