@@ -90,6 +90,8 @@ class MetricsStore:
                     threshold REAL NOT NULL,
                     comparison TEXT NOT NULL DEFAULT 'gt',
                     consecutive INTEGER NOT NULL DEFAULT 2,
+            cooldown_minutes INTEGER NOT NULL DEFAULT 0,
+            escalation_target TEXT,
                     description TEXT NOT NULL DEFAULT '',
                     enabled BOOLEAN NOT NULL DEFAULT 1,
                     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -116,7 +118,9 @@ class MetricsStore:
                     telegram_bot_token TEXT NOT NULL DEFAULT '',
                     telegram_chat_id TEXT NOT NULL DEFAULT '',
                     webhook_enabled BOOLEAN NOT NULL DEFAULT 0,
-                    webhook_url TEXT NOT NULL DEFAULT ''
+                    webhook_url TEXT,
+            retry_attempts INTEGER NOT NULL DEFAULT 2,
+            retry_timeout_sec REAL NOT NULL DEFAULT 8.0 NOT NULL DEFAULT ''
                 )
                 """
             )

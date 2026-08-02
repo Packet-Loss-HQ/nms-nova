@@ -3,6 +3,7 @@
 
 import json
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any, Optional
 
@@ -600,8 +601,18 @@ def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict, ru
     webhook_alerts: list[dict[str, Any]] = []
     if rules:
         rule_map = {r["metric_name"]: r for r in rules}
+        now_ts = datetime.utcnow().isoformat()
         for a in deduped:
             rule = rule_map.get(a.get("metric_name"))
+            cooldown_min = int((rule or {}).get("cooldown_minutes") or 0)
+            last_key = f"{a.get('target_name')}:{a.get('metric_name')}"
+            if cooldown_min and last_sent.get(last_key):
+                try:
+                    last = datetime.fromisoformat(last_sent[last_key])
+                    if (datetime.utcnow() - last).total_seconds() < cooldown_min * 60:
+                        continue
+                except Exception:
+                    pass
             delivery = (rule or {}).get("delivery", "all")
             if delivery == "telegram":
                 telegram_alerts.append(a)
@@ -614,6 +625,7 @@ def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict, ru
         telegram_alerts = deduped[:]
         webhook_alerts = deduped[:]
 
+    last_sent: dict[str, str] = {}
     destinations: list[tuple[str, str, dict]] = []
     if settings.get("webhook_enabled") and settings.get("webhook_url") and webhook_alerts:
         payload = {"schema_version": 1, "alerts": webhook_alerts, "source": "nms-nova"}
@@ -633,9 +645,9 @@ def _post_webhook_with_settings(alerts: list[dict[str, Any]], settings: dict, ru
     for kind, url, payload_or_json in destinations:
         status = 0
         error_text = None
-        for attempt in range(2):
+        for attempt in range(int(settings.get("retry_attempts") or 2)):
             try:
-                resp = httpx.post(url, json=payload_or_json, timeout=8)
+                resp = httpx.post(url, json=payload_or_json, timeout=float(settings.get("retry_timeout_sec") or 8.0))
                 status = resp.status_code
                 if resp.status_code < 400:
                     break
@@ -1074,7 +1086,8 @@ def api_get_target_metrics(target_id: int):
 
 @api_router.get("/metrics")
 def api_list_metrics():
-    con = store._connect()
+    con = sqlite3.connect(store.db_path)
+    con.row_factory = sqlite3.Row
     try:
         rows = con.execute("""
             SELECT ms.id, ms.target_id, t.name AS target_name, ms.definition_id,
