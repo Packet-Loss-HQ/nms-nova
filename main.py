@@ -267,7 +267,7 @@ def _render_dashboard() -> str:
 <body>
   <header>
     <div><div class='brand'>NMS-Nova</div><div class='meta'>v{app.version}</div></div>
-    <div class='meta'>{len(targets)} targets · <a href='/targets' style='color:var(--accent)'>Manage</a></div>
+    <div class='meta'>{len(targets)} targets · <a href='/targets' style='color:var(--accent)'>Manage</a> · <a href='/status' style='color:var(--accent)'>Status</a></div>
   </header>
   <main hx-get='/' hx-trigger='every 15s' hx-swap='innerHTML'>
     {body if body else "<div class='empty'>No data yet</div>"}
@@ -350,6 +350,57 @@ async def health():
             "target_count": target_count,
         },
     }
+
+
+def _service_status(name: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "active": False,
+        "error": "not checked",
+    }
+
+
+def _get_service_status() -> list[dict[str, Any]]:
+    return []
+
+
+@app.get("/status", response_class=HTMLResponse)
+async def status_page():
+    db_path = Path(os.getenv("NMS_DB", str(DEFAULT_DB)))
+    db_size = db_path.stat().st_size if db_path.exists() else 0
+    con = __import__("sqlite3").connect(str(db_path))
+    con.row_factory = __import__("sqlite3").Row
+    try:
+        sample_count = con.execute("SELECT count(*) FROM metric_samples").fetchone()[0]
+        target_count = con.execute("SELECT count(*) FROM targets").fetchone()[0]
+        latest_row = con.execute("SELECT max(timestamp) AS ts FROM metric_samples").fetchone()
+        latest_ts = latest_row["ts"] if latest_row and latest_row["ts"] else None
+    finally:
+        con.close()
+    rows = store.latest_samples()
+    alert_count = len(_evaluate_alerts())
+    last_seen = f"<span class='metric-value'>{latest_ts}</span>" if latest_ts else "<span class='metric-value'>No samples</span>"
+    freshness = (
+        "<div class='metric-row'><span class='metric-name'>Latest sample</span>"
+        f"{last_seen}</div>"
+    )
+    body = (
+        "<div class='page-header'><h2>Status</h2></div>"
+        "<div class='grid'>"
+        f"<div class='card'><div class='card-header'><span class='card-title'>System</span></div>"
+        f"<div class='card-body'>"
+        f"<div class='metric-row'><span class='metric-name'>Version</span><span class='metric-value'>{app.version}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Targets</span><span class='metric-value'>{target_count}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Samples</span><span class='metric-value'>{sample_count}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>DB size</span><span class='metric-value'>{db_size}</span></div>"
+        f"{freshness}"
+        f"</div></div>"
+        f"<div class='card'><div class='card-header'><span class='card-title'>Alerts</span></div>"
+        f"<div class='card-body'><div class='metric-row'><span class='metric-name'>Active</span>"
+        f"<span class='metric-value'>{alert_count}</span></div></div></div>"
+        "</div>"
+    )
+    return HTMLResponse(_layout("Status", body))
 
 
 @app.get("/alerts")
