@@ -119,20 +119,26 @@ def _render_dashboard() -> str:
         for m in metrics:
             value = m["value"]
             metric_name = m["metric_name"]
-            unit = "%"
             is_error = bool(m.get("error"))
             if metric_name == "service_up":
                 unit = ""
                 value = "UP" if value == 1.0 else "DOWN"
                 color = "#0a0" if value == "UP" else "#a22"
+            elif metric_name == "interface_total_kbps":
+                unit = " kbps"
+                value = f"{value:,.0f}"
+                color = "#0a0"
+                if is_error:
+                    color = "#a22"
             else:
+                unit = "%"
                 color = "#0a0"
                 if is_error:
                     color = "#a22"
                 elif isinstance(value, (int, float)):
-                    if "percent" in metric_name and value >= 90:
+                    if value >= 90:
                         color = "#a22"
-                    elif "percent" in metric_name and value >= 70:
+                    elif value >= 70:
                         color = "#b90"
             display = f"{value}{unit}"
             if is_error:
