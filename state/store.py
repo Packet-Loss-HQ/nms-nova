@@ -422,6 +422,14 @@ class MetricsStore:
         finally:
             con.close()
 
+    def revoke_api_token(self, token_id: int) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE api_tokens SET enabled = 0 WHERE id = ?", (token_id,))
+            con.commit()
+        finally:
+            con.close()
+
     def list_api_tokens(self) -> List[dict]:
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row

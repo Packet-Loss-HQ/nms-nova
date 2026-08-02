@@ -64,7 +64,7 @@ if not store.list_alert_rules():
         )
 _loaded_rules = [AlertRule(**{k: v for k, v in r.items() if k in {"metric_name", "threshold", "comparison", "consecutive", "description"}}) for r in store.list_alert_rules()] or _initial_alert_rules[:]
 alert_engine = AlertEngine(rules=_loaded_rules)
-app = FastAPI(title="NMS-Nova", version="0.4.0")
+app = FastAPI(title="NMS-Nova", docs_url="/docs", redoc_url="/redoc", version="0.4.0")
 app.mount('/static', StaticFiles(directory='/opt/nms-nova/static'), name='static')
 security = HTTPBasic()
 
@@ -104,8 +104,6 @@ def _bearer_auth(request: Request) -> bool:
     return compare_digest(auth.split(" ", 1)[1], BEARER_TOKEN)
 
 
-
-
 # M13: scoped API token auth
 try:
     api_tokens = store.list_api_tokens()
@@ -116,8 +114,7 @@ except Exception:
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    public_paths = ("/health", "/metrics", "/chart", "/api/v1")
-    if path in public_paths or any(path.startswith(p) for p in public_paths):
+    if _is_public_path(path):
         return await call_next(request)
     auth = request.headers.get("authorization", "")
     if auth.startswith("Bearer "):
@@ -268,6 +265,11 @@ def _render_dashboard() -> str:
 
     body = alert_section + "<div class='grid'>" + "".join(cards) + "</div>"
     return _layout('Dashboard', body)
+@app.get("/healthz")
+async def healthz():
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/health")
 async def health():
     rows = store.latest_samples()
@@ -1164,6 +1166,27 @@ def api_delivery_log(limit: int = 100):
     return JSONResponse([dict(r) for r in rows])
 
 
+@api_router.post("/alerts/escalate")
+def api_execute_escalations(request: Request):
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    rows = store.pending_escalations()
+    results = []
+    for row in rows:
+        if row.get("escalation_target"):
+            payload = {
+                "rule_id": row["id"],
+                "target_name": row.get("target_name"),
+                "metric_name": row.get("metric_name"),
+                "description": row.get("description"),
+                "escalation_target": row.get("escalation_target"),
+                "last_alerted_at": row.get("last_alerted_at"),
+            }
+            results.append({"rule_id": row["id"], "status": "queued", "payload": payload})
+    return JSONResponse({"executed": len(results), "items": results})
+
+
 @api_router.get("/alerts/pending-escalations")
 def api_pending_escalations():
     rows = store.pending_escalations()
@@ -1177,6 +1200,15 @@ def api_list_tokens(request: Request):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
     rows = store.list_api_tokens()
     return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.delete("/admin/tokens/{token_id}")
+def api_revoke_token(request: Request, token_id: int):
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    store.revoke_api_token(token_id)
+    return JSONResponse({"status": "revoked"})
 
 
 @api_router.post("/admin/tokens")
@@ -1216,7 +1248,9 @@ async def branding_form():
     settings = store.get_branding_settings()
     body = f"""
     <div class='page-header'><h2>Branding</h2></div>
-    <form hx-post='/settings/branding' hx-target='#main-content' hx-swap='innerHTML'>
+    <form id='branding-form' hx-post='/settings/branding' hx-target='#main-content' hx-swap='innerHTML'>
+      <div id='brand-preview'></div>
+      <script src='/static/branding-preview.js'></script>
       <div class='field'><label>Product name</label><input name='product_name' value='{settings.get('product_name','NMS-Nova')}'></div>
       <div class='field'><label>Brand title</label><input name='brand_title' value='{settings.get('brand_title','NMS-Nova')}'></div>
       <div class='field'><label>Custom CSS URL</label><input name='brand_css_url' value='{settings.get('brand_css_url') or ''}' placeholder='https://example.com/brand.css'></div>
@@ -1245,5 +1279,37 @@ async def save_branding(request: Request):
         "license_mode": form.get("license_mode", "mit"),
     })
     return HTMLResponse(_post_save_redirect("/settings/branding"))
+
+
+
+@app.post("/settings/branding/preview")
+async def preview_branding(request: Request):
+    form = await request.form()
+    preview_brand = {
+        "product_name": form.get("product_name", "NMS-Nova"),
+        "brand_title": form.get("brand_title", "NMS-Nova"),
+        "brand_css_url": form.get("brand_css_url") or None,
+        "hide_powered_by": form.get("hide_powered_by") == "on",
+        "license_mode": form.get("license_mode", "mit"),
+    }
+    html = f"""
+    <div class='preview-frame'>
+      <div class='preview-bar'>{preview_brand['brand_title']}</div>
+      <div class='preview-meta'>Preview — {'Commercial' if preview_brand['license_mode']=='commercial' else 'MIT'} license {' | powered by NMS-Nova' if not preview_brand['hide_powered_by'] else ''}</div>
+    </div>
+    """
+    return HTMLResponse(html)
+
+
+
+@api_router.get("/license/check")
+def api_license_check():
+    settings = store.get_branding_settings()
+    mode = settings.get("license_mode", "mit")
+    return JSONResponse({
+        "mode": mode,
+        "commercial_features_enabled": mode == "commercial",
+        "support_contact": "sales@packet-loss.net" if mode == "commercial" else None,
+    })
 
 app.include_router(api_router)
