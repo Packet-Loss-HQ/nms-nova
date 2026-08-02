@@ -240,131 +240,7 @@ def _render_dashboard() -> str:
         )
 
     body = alert_section + "<div class='grid'>" + "".join(cards) + "</div>"
-    return f"""<!doctype html>
-<html>
-<head>
-  <meta charset='utf-8' />
-  <meta name='viewport' content='width=device-width, initial-scale=1' />
-  <title>NMS-Nova</title>
-  <script src='https://unpkg.com/htmx.org@2.0.0'></script>
-  <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
-  <style>
-    :root {{
-      color-scheme: light dark;
-      --bg: #f6f7f9;
-      --card-bg: #ffffff;
-      --text: #1f2328;
-      --muted: #57606a;
-      --border: #d0d7de;
-      --accent: #0969da;
-      --ok: #0a0;
-      --warn: #b90;
-      --crit: #cf222e;
-      --shadow: rgba(31, 35, 40, 0.06);
-    }}
-    @media (prefers-color-scheme: dark) {{
-      :root {{
-        --bg: #0d1117;
-        --card-bg: #161b22;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --border: #30363d;
-        --shadow: rgba(0, 0, 0, 0.4);
-      }}
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }}
-    header {{ padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap: 1rem; background: var(--card-bg); }}
-    .brand {{ font-weight: 800; letter-spacing: -0.02em; font-size: 1.1rem; }}
-    .meta {{ color: var(--muted); font-size: 0.85rem; }}
-    main {{ padding: 1.5rem; }}
-    .grid {{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
-    .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; box-shadow: 0 2px 0 var(--shadow); }}
-    .card-header {{ display:flex; justify-content:space-between; align-items:center; gap: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }}
-    .card-title {{ font-weight: 700; font-size: 1rem; word-break: break-word; }}
-    .tier-badge {{ font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }}
-    .tier-t1 {{ color: #1a7f37; border-color: #1a7f37; background: rgba(26,127,55,0.08); }}
-    .tier-t2 {{ color: #57606a; }}
-    .card-body {{ display: grid; gap: 0.35rem; }}
-    .metric-row {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; }}
-    .metric-name {{ color: var(--muted); font-size: 0.88rem; }}
-    .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
-    .chart-container {{ margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px dashed var(--border); }}
-    .chart-header {{ display:flex; gap: 0.4rem; margin-bottom: 0.6rem; }}
-    .range-btn {{ background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 0.25rem 0.55rem; cursor: pointer; font-size: 0.78rem; color: var(--muted); }}
-    .range-btn.active {{ background: var(--text); color: var(--bg); border-color: var(--text); }}
-    .chart-wrap {{ display: grid; gap: 0.6rem; }}
-    canvas {{ width: 100% !important; height: 110px !important; }}
-    .chart-label {{ font-size: 0.75rem; color: var(--muted); text-align: right; }}
-    .alert-strip {{ display: grid; gap: 0.5rem; margin-bottom: 1rem; }}
-    .alert-item {{ display:flex; justify-content:space-between; align-items:center; gap: 1rem; padding: 0.7rem 0.9rem; border-radius: 10px; border: 1px solid transparent; }}
-    .alert-critical {{ background: rgba(207,34,46,0.12); color: var(--crit); border-color: rgba(207,34,46,0.35); }}
-    .alert-warning {{ background: rgba(187,144,0,0.10); color: #8a6d00; border-color: rgba(187,144,0,0.35); }}
-    .alert-target {{ font-weight: 700; word-break: break-word; }}
-    .alert-text {{ color: var(--muted); font-size: 0.9rem; }}
-    .alert-value {{ font-weight: 800; font-variant-numeric: tabular-nums; }}
-    .empty {{ color: var(--muted); font-size: 0.9rem; }}
-  </style>
-</head>
-<body>
-  <header>
-    <div><div class='brand'>NMS-Nova</div><div class='meta'>v{app.version}</div></div>
-    <div class='meta'>{len(targets)} targets · <a href='/targets' style='color:var(--accent)'>Manage</a> · <a href='/status' style='color:var(--accent)'>Status</a></div>
-  </header>
-  <main hx-get='/' hx-trigger='every 15s' hx-swap='innerHTML'>
-    {body if body else "<div class='empty'>No data yet</div>"}
-  </main>
-  <script>
-    const chartState = {{}};
-    function renderCharts() {{
-      document.querySelectorAll('.chart-container').forEach(el => {{
-        const target = el.dataset.target;
-        const range = el.dataset.range || '24h';
-        fetch(`/chart/${{encodeURIComponent(target)}}?range=${{range}}`)
-          .then(r => r.ok ? r.json() : Promise.reject())
-          .then(data => {{
-            if (!data || !data.series) return;
-            Object.keys(data.series).forEach(metric => {{
-              const canvas = document.getElementById(`chart-${{target}}-${{metric}}`);
-              if (!canvas) return;
-              const points = data.series[metric];
-              const labels = points.map(p => p.ts);
-              const values = points.map(p => p.value);
-              let chart = chartState[`${{target}}-${{metric}}`];
-              if (!chart) {{
-                const ctx = canvas.getContext('2d');
-                chart = new Chart(ctx, {{
-                  type: 'line',
-                  data: {{ labels, datasets: [{{ label: metric, data: values, borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4, tension: 0.2 }}] }},
-                  options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ x: {{ display: false }}, y: {{ beginAtZero: true }} }} }}
-                }});
-                chartState[`${{target}}-${{metric}}`] = chart;
-              }} else {{
-                chart.data.labels = labels;
-                chart.data.datasets[0].data = values;
-                chart.update('none');
-              }}
-            }});
-          }})
-          .catch(() => {{}});
-      }});
-    }}
-    renderCharts();
-    setInterval(renderCharts, 15000);
-    window._setRange = function(target, range) {{
-      document.querySelectorAll(`.chart-container[data-target=\"${{target}}\"] .range-btn`).forEach(btn => btn.classList.toggle('active', btn.dataset.range === range));
-      const el = document.querySelector(`.chart-container[data-target=\"${{target}}\"]`);
-      if (el) el.dataset.range = range;
-      renderCharts();
-    }};
-    if (window.htmx) {{
-      document.addEventListener('htmx:afterSwap', renderCharts);
-    }}
-  </script>
-</body>
-</html>"""
-
-
+    return _layout('Dashboard', body)
 @app.get("/health")
 async def health():
     rows = store.latest_samples()
@@ -972,6 +848,10 @@ def _layout(title: str, body: str) -> str:
     button, .button {{ padding: 0.55rem 0.75rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer; }}
     .empty {{ color: var(--muted); }}
     @media (max-width: 640px) {{
+      .nav-toggle {{ display: inline-block; }}
+      nav {{ display:none; }}
+      nav.open {{ display:block; margin-top: 0.75rem; }}
+      nav a {{ display:block; margin: 0.35rem 0; }}
       form > div, form {{ width: 100%; }}
       .field input, .field select {{ width: 100%; }}
     }}
@@ -979,11 +859,29 @@ def _layout(title: str, body: str) -> str:
 </head>
 <body>
   <header>
-    <div><a class='brand' href='/' style='color:var(--text);text-decoration:none'>NMS-Nova</a></div>
-    <div class='meta'>{title}</div>
+    <div class='topbar'>
+      <a class='brand' href='/'>NMS-Nova</a>
+      <button class='nav-toggle' onclick="document.querySelector('nav').classList.toggle('open')">Menu</button>
+    </div>
+    <nav>
+      <a href='/'>Dashboard</a>
+      <a href='/targets'>Targets</a>
+      <a href='/alerts'>Alerts</a>
+      <a href='/settings'>Settings</a>
+    </nav>
   </header>
   <main id='main-content'>
     {body}
   </main>
+  <script>
+    (function(){{
+      const path = window.location.pathname || "/";
+      document.querySelectorAll("nav a").forEach(function(a){{
+        const href = a.getAttribute("href") || "/";
+        const active = (href === "/" && path === "/") || (href !== "/" && path.startsWith(href));
+        if (active) a.classList.add("active");
+      }});
+    }})();
+  </script>
 </body>
 </html>"""
