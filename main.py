@@ -584,6 +584,27 @@ async def settings_form():
     return HTMLResponse(_layout("Settings", body))
 
 
+@app.post("/settings/retention")
+async def update_retention(request: Request):
+    form = await request.form()
+    days = int(form.get("retention_days", 30))
+    store.save_settings(retention_days=days)
+    store.cleanup(retention_days=days)
+    return HTMLResponse(_post_save_redirect("/settings"))
+
+
+@app.post("/settings/password")
+async def update_password(request: Request):
+    form = await request.form()
+    if form.get("clear") == "1":
+        store.save_settings(web_password_hash=None, web_auth_enabled=0)
+    else:
+        pw = form.get("password", "")
+        h = __import__("hashlib").sha256(pw.encode()).hexdigest()
+        store.save_settings(web_password_hash=h, web_auth_enabled=1)
+    return HTMLResponse(_post_save_redirect("/settings"))
+
+
 @app.post("/settings/delivery")
 async def save_delivery(request: Request):
     form = await request.form()
