@@ -129,3 +129,17 @@ Dual-licensed:
 - Commercial/closed use: proprietary/all rights reserved
 
 See `LICENSE.txt` and `PRODUCT.md`.
+
+## Screenshots
+
+- Dashboard: at-a-glance target cards with latest values, probe reliability, and chart ranges.
+- Target detail: probe status, metric blocks, inline interval editing, per-metric history.
+- Settings: account/password, retention, Telegram/webhook delivery.
+
+## Contributing
+
+See `CONTRIBUTING.md` for setup, testing, and PR guidance.
+
+## Security
+
+See `SECURITY.md` for responsible disclosure instructions.
