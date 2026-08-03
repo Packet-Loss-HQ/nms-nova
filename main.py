@@ -881,14 +881,71 @@ async def target_detail(target_id: int):
         return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
     latest = {r["metric_name"]: r for r in store.latest_samples() if r.get("target_id") == target_id}
     metric_defs = store.list_metrics_for_target(target_id)
-    metric_rows = "".join(
-        f"<div class='metric-row'><div><div class='metric-name'>{m.get('name','')}</div><div class='card-meta'>{m.get('unit','') or ''}</div></div><div class='metric-value'>{latest[m.get('name','')]['value'] if m.get('name','') in latest else '—'}</div></div>"
-        for m in metric_defs
-    ) or "<div class='empty'>No metrics configured.</div>"
+
+    def fmt_ts(ts):
+        if not ts:
+            return "never"
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(ts)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ts
+
+    def probe_state(metric_name):
+        sample = latest.get(metric_name)
+        if not sample:
+            return "no-sample", "No sample"
+        if sample.get("error"):
+            return "error", sample["error"]
+        return "ok", "OK"
+
+    metric_rows = []
+    for m in metric_defs:
+        name = m.get("name", "")
+        state, state_label = probe_state(name)
+        state_class = {"ok": "state-ok", "error": "state-error"}.get(state, "state-unknown")
+        value = latest[name]["value"] if name in latest else "—"
+        last_ts = fmt_ts(latest[name].get("timestamp")) if name in latest else "never"
+        unit = m.get("unit") or ""
+        interval = m.get("poll_interval_sec", 60)
+        metric_id = m["id"]
+        metric_rows.append(
+            f"<div class='metric-block' id='metric-{metric_id}' data-target='{target_id}'>"
+            f"<div class='metric-row'><div><div class='metric-name'>{name}</div><div class='card-meta'>Interval: {interval}s</div></div>"
+            f"<div class='metric-state {state_class}'>{state_label}</div></div>"
+            f"<div class='metric-row'><div class='metric-name'>Current</div><div class='metric-value'>{value} {unit}</div></div>"
+            f"<div class='metric-row'><div class='metric-name'>Last probe</div><div class='metric-value'>{last_ts}</div></div>"
+            f"<form hx-post='/targets/{target_id}/metrics/{metric_id}/config' hx-target='#metric-{metric_id}' hx-swap='innerHTML' class='metric-config'>"
+            f"<input type='number' name='interval' value='{interval}' min='10' step='10' style='width:80px' required>"
+            f"<button type='submit' class='primary' style='padding:6px 10px'>Save</button>"
+            f"</form>"
+            f"<div class='metric-history'><div class='chart-header'>"
+            f"<button class='range-btn' data-range='24h' data-metric='{name}' onclick='_loadMetricHistory(this)'>24h</button>"
+            f"<button class='range-btn' data-range='7d' data-metric='{name}' onclick='_loadMetricHistory(this)'>7d</button>"
+            f"<button class='range-btn' data-range='30d' data-metric='{name}' onclick='_loadMetricHistory(this)'>30d</button>"
+            f"</div>"
+            f"<canvas id='history-{metric_id}'></canvas></div>"
+            f"</div>"
+        )
+    metric_html = "".join(metric_rows) or "<div class='empty'>No metrics configured.</div>"
+
+    alert_rules = store.list_alert_rules_for_target(target_id)
+    if alert_rules:
+        alert_rows = "".join(
+            f"<div class='rule-row'><div><div class='rule-name'>{r.get('description') or r.get('metric_name')}</div>"
+            f"<div class='card-meta'>{r.get('metric_name')} {r.get('comparison')} {r.get('threshold')}</div></div>"
+            f"<div class='rule-status'>{'Enabled' if r.get('enabled') else 'Disabled'}</div></div>"
+            for r in alert_rules
+        )
+        alert_section = f"<div class='card'><div class='card-header'><div class='card-title'>Watched by rules</div></div><div>{alert_rows}</div></div>"
+    else:
+        alert_section = "<div class='card'><div class='card-header'><div class='card-title'>Watched by rules</div></div><div class='empty'>No alert rules reference this target.</div></div>"
+
     body = f"""
       <div class='page-header'><h2>{target.get('name','')}</h2>
         <div class='actions'>
-          <a class='button' href='/targets/{target_id}/edit'>Edit</a>
+          <a class='button' href='/targets/{target_id}/edit'>Edit target</a>
           <button class='danger' hx-delete='/targets/{target_id}' hx-confirm='Delete {target.get('name','')}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>
           <button hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Back</button>
         </div>
@@ -896,9 +953,14 @@ async def target_detail(target_id: int):
       <div class='grid'>
         <div class='card'>
           <div class='card-header'><div><div class='card-title'>{target.get('kind','').upper()} target</div><div class='card-meta'>{target.get('address','')}</div></div><div class='tier-badge tier-{target.get('tier','T2').lower()}'>{target.get('tier','T2')}</div></div>
-          <div class='card-header'><div class='card-title'>Metrics</div></div>
-          <div>{metric_rows}</div>
+          <div class='card-header'><div class='card-title'>Probe status</div></div>
+          <div class='probe-status'><div class='state-dot state-{"ok" if any(probe_state(m.get("name",""))[0]=="ok" for m in metric_defs) else "error"}'></div><div class='card-meta'>{fmt_ts(latest[next(iter(latest))].get("timestamp")) if latest else "No samples"}</div></div>
         </div>
+        <div class='card'>
+          <div class='card-header'><div class='card-title'>Metrics</div></div>
+          <div id='metric-list'>{metric_html}</div>
+        </div>
+        {alert_section}
       </div>
     """
     return HTMLResponse(_layout(target.get("name",""), body))
@@ -954,6 +1016,59 @@ async def update_target(target_id: int, request: Request):
     for name in requested - existing:
         store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60)
     return HTMLResponse(_post_save_redirect(f"/targets/{target_id}/edit"))
+
+
+@app.post("/targets/{target_id}/metrics/{metric_id}/config")
+async def update_metric_config(target_id: int, metric_id: int, request: Request):
+    form = await request.form()
+    interval = int(form.get("interval", 60))
+    store.update_metric(metric_id, poll_interval_sec=interval)
+    target = store.get_target(target_id)
+    metric = next((m for m in store.list_metrics_for_target(target_id) if m["id"] == metric_id), None)
+    if not target or not metric:
+        return HTMLResponse("<div class='empty'>Not found</div>", status_code=404)
+    latest = {r["metric_name"]: r for r in store.latest_samples() if r.get("target_id") == target_id}
+    sample = latest.get(metric.get("name", ""))
+    state = "no-sample"
+    state_label = "No sample"
+    if sample:
+        if sample.get("error"):
+            state = "error"
+            state_label = sample["error"]
+        else:
+            state = "ok"
+            state_label = "OK"
+    unit = metric.get("unit") or ""
+    value = sample["value"] if sample else "—"
+    from datetime import datetime
+
+    def fmt_ts(ts):
+        if not ts:
+            return "never"
+        try:
+            return datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ts
+
+    last_ts = fmt_ts(sample.get("timestamp")) if sample else "never"
+    return HTMLResponse(
+        f"<div class='metric-block'>"
+        f"<div class='metric-row'><div><div class='metric-name'>{metric.get('name','')}</div><div class='card-meta'>Interval: {interval}s</div></div>"
+        f"<div class='metric-state state-{state}'>{state_label}</div></div>"
+        f"<div class='metric-row'><div class='metric-name'>Current</div><div class='metric-value'>{value} {unit}</div></div>"
+        f"<div class='metric-row'><div class='metric-name'>Last probe</div><div class='metric-value'>{last_ts}</div></div>"
+        f"<form hx-post='/targets/{target_id}/metrics/{metric_id}/config' hx-target='#metric-{metric_id}' hx-swap='innerHTML' class='metric-config'>"
+        f"<input type='number' name='interval' value='{interval}' min='10' step='10' style='width:80px' required>"
+        f"<button type='submit' class='primary' style='padding:6px 10px'>Save</button>"
+        f"</form>"
+        f"</div>"
+    )
+
+
+@app.get("/targets/{target_id}/metrics/{metric_name}/history")
+async def metric_history(target_id: int, metric_name: str, range: str = "24h"):
+    series = store.metric_history(target_id, metric_name, range)
+    return {"target_id": target_id, "metric": metric_name, "range": range, "series": series}
 
 
 @app.delete("/targets/{target_id}")

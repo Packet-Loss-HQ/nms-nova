@@ -456,6 +456,47 @@ class MetricsStore:
         finally:
             con.close()
 
+    def list_alert_rules_for_target(self, target_id: int) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            return [
+                dict(r) for r in con.execute(
+                    "SELECT * FROM alert_rules WHERE metric_name IN (SELECT name FROM metric_definitions WHERE target_id = ?) ORDER BY id",
+                    (target_id,),
+                ).fetchall()
+            ]
+        finally:
+            con.close()
+
+    def metric_history(self, target_id: int, metric_name: str, range: str = "24h") -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            if range == "7d":
+                bucket = "strftime('%Y-%m-%d', timestamp)"
+                where = "timestamp >= datetime('now', '-7 days')"
+            elif range == "30d":
+                bucket = "strftime('%Y-%m-%d', timestamp)"
+                where = "timestamp >= datetime('now', '-30 days')"
+            else:
+                bucket = "strftime('%Y-%m-%d %H:00:00', timestamp)"
+                where = "timestamp >= datetime('now', '-24 hours')"
+            rows = con.execute(
+                f"""
+                SELECT {bucket} AS ts, avg(s.value) AS value
+                FROM metric_samples s
+                JOIN metric_definitions d ON d.id = s.definition_id
+                WHERE s.target_id = ? AND d.name = ? AND {where}
+                GROUP BY ts
+                ORDER BY ts ASC
+                """,
+                (target_id, metric_name),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
     def pending_escalations(self, limit: int = 200) -> List[dict]:
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row

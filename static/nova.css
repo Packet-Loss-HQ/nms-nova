@@ -104,3 +104,87 @@ nav.open { display:block; margin-top: 0.75rem; }
 /* Inline page header for list pages */
 .page-toolbar { display:flex; justify-content:space-between; align-items:center; gap: 1rem; margin-bottom: 1rem; }
 .page-toolbar h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+/* Detail page enhancements */
+.metric-block {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.metric-state {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.state-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+.state-error {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+.state-unknown {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+.state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+.probe-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.metric-config {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.metric-config input[type="number"] {
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.metric-history {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.metric-history .chart-header {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.rule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.rule-row:last-child {
+  border-bottom: none;
+}
+.rule-name {
+  font-weight: 600;
+  color: var(--text);
+}
+.rule-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}

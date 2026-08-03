@@ -64,3 +64,34 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 });
+window._loadMetricHistory = function(btn) {
+  const metric = btn.dataset.metric;
+  const range = btn.dataset.range;
+  const block = btn.closest('.metric-block');
+  const canvas = block.querySelector('canvas');
+  if (!canvas) return;
+  block.querySelectorAll('.range-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.range === range); });
+  const targetId = block.dataset.target;
+  fetch('/targets/' + encodeURIComponent(targetId) + '/metrics/' + encodeURIComponent(metric) + '/history?range=' + range)
+    .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function(data) {
+      if (!canvas.id) return;
+      const labels = (data.series || []).map(function(p) { return p.ts; });
+      const values = (data.series || []).map(function(p) { return p.value; });
+      let chart = window._metricCharts && window._metricCharts[canvas.id];
+      if (!chart) {
+        chart = new Chart(canvas, {
+          type: 'line',
+          data: { labels: labels, datasets: [{ label: metric, data: values, borderWidth: 1.5, pointRadius: 2, pointHoverRadius: 4, tension: 0.2 }] },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { beginAtZero: true } } }
+        });
+        if (!window._metricCharts) window._metricCharts = {};
+        window._metricCharts[canvas.id] = chart;
+      } else {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = values;
+        chart.update('none');
+      }
+    })
+    .catch(function() {});
+};
