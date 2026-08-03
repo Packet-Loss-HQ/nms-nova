@@ -753,7 +753,9 @@ async def list_alerts_ui():
 @app.get("/alerts/new")
 async def new_alert_form(request: Request):
     body = _alert_rule_form()
-    return _layout("New alert rule", body, request=request)
+    if request.headers.get("hx-request"):
+        return HTMLResponse(body)
+    return HTMLResponse(_layout("New alert rule", body))
 
 
 @app.get("/alerts/{rule_id}/edit")
@@ -859,7 +861,9 @@ async def list_targets_ui():
 @app.get("/targets/new")
 async def new_target_form(request: Request):
     body = _target_form()
-    return _layout("New target", body, request=request)
+    if request.headers.get("hx-request"):
+        return HTMLResponse(body)
+    return HTMLResponse(_layout("New target", body))
 
 
 @app.get("/targets/{target_id}")
@@ -953,7 +957,7 @@ def _post_save_redirect(location: str) -> str:
     return f"<div hx-redirect='{location}'></div>"
 
 
-def _layout(title: str, body: str, request: Optional[Request] = None, status_code: int = 200) -> HTMLResponse:
+def _layout(title: str, body: str) -> str:
     import secrets
     csrf = secrets.token_urlsafe(16)
     _brand = store.get_branding_settings()
@@ -961,7 +965,7 @@ def _layout(title: str, body: str, request: Optional[Request] = None, status_cod
     _brand_css = _brand.get("brand_css_url")
     _page_title = f"{_brand_title} - {title}"
     _head = f"""<link rel='stylesheet' href='{_brand_css}' />""" if _brand_css else ""
-    layout = f"""<!doctype html>
+    return f"""<!doctype html>
 <html>
 <head>
   <meta charset='utf-8' />
@@ -1014,9 +1018,6 @@ def _layout(title: str, body: str, request: Optional[Request] = None, status_cod
   </script>
 </body>
 </html>"""
-    if request and request.headers.get("hx-request"):
-        return HTMLResponse(body, status_code=status_code)
-    return HTMLResponse(layout, status_code=status_code)
 
 
 # ---------------------------
