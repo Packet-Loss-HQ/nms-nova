@@ -838,8 +838,13 @@ async def new_target_form():
 
 
 @app.get("/targets/{target_id}")
-async def new_target_form():
-    return HTMLResponse(_layout("New target", _target_form()))
+async def target_detail(target_id: int):
+    target = store.get_target(target_id)
+    if not target:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    metrics = store.list_metrics_for_target(target_id)
+    body = _target_form(target=target, metrics=metrics)
+    return HTMLResponse(_layout("New target", body))
 
 
 @app.get("/targets/{target_id}/edit")
