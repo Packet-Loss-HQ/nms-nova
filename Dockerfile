@@ -1,12 +1,23 @@
 FROM python:3.11-slim
 
-WORKDIR /opt/nms-nova
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+WORKDIR /opt/nms-nova
+COPY requirements.txt requirements-dev.txt ./ 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY main.py ./main.py
+COPY state ./state
+COPY probes ./probes
+COPY scripts ./scripts
+COPY static ./static
+COPY api ./api
+COPY targets.yaml.example ./targets.yaml.example
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /opt/nms-nova
+USER appuser
 
 EXPOSE 8000
-
-CMD ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "main.py"]

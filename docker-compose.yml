@@ -5,11 +5,13 @@ services:
     build: .
     container_name: nms-nova
     environment:
-      - NMS_DB=/data/nms-nova.db
-      - NMS_AUTH_USER=${NMS_AUTH_USER:-change-me}
-      - NMS_AUTH_PASS=${NMS_AUTH_PASS:-change-me}
-      - NMS_API_TOKEN=${NMS_API_TOKEN:-}
-      - NMS_WEBHOOK_URL=${NMS_WEBHOOK_URL:-}
+      NMS_DB: /data/nms-nova.db
+      NMS_AUTH_USER: ${NMS_AUTH_USER:-change-me}
+      NMS_AUTH_PASS: ${NMS_AUTH_PASS:-change-me}
+      NMS_API_TOKEN: ${NMS_API_TOKEN:-}
+      NMS_WEBHOOK_URL: ${NMS_WEBHOOK_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:
       - ./state:/data
       - ./secrets:/opt/nms-nova/secrets:ro
@@ -19,3 +21,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=64m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

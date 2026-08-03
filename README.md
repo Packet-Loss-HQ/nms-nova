@@ -10,24 +10,26 @@ Self-hosted, owner-operated network monitoring for homelabs and small-scale infr
 
 ## Install
 
+Requires Python 3.11-3.13.
+
 ```bash
 git clone https://github.com/Packet-Loss-HQ/nms-nova.git /opt/nms-nova
 cd /opt/nms-nova
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp targets.yaml.example targets.yaml
-mkdir -p secrets state backups
+./scripts/install.sh
+```
+
+Or run the installer from another path:
+```bash
+./scripts/install.sh /opt/nms-nova
 ```
 
 ## Systemd
 
-```bash
-cp scripts/nms-nova-fastapi.service /etc/systemd/system/
-cp scripts/nms-nova-poller.service /etc/systemd/system/
-cp scripts/nms-nova-retention.service /etc/systemd/system/
-cp scripts/nms-nova-retention.timer /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now nms-nova-fastapi nms-nova-poller nms-nova-retention.timer
-```
+The installer enables these units if systemd is present:
+- `nms-nova-fastapi.service`
+- `nms-nova-poller.service`
+- `nms-nova-retention.service`
+- `nms-nova-retention.timer`
 
 ## Quick start
 
@@ -35,6 +37,45 @@ systemctl enable --now nms-nova-fastapi nms-nova-poller nms-nova-retention.timer
 2. Add a target from Setup or `/targets/new`.
 3. Confirm probes appear on the Dashboard.
 4. Configure alert delivery in Settings if needed.
+
+## Reverse proxy / TLS
+
+NMS-Nova runs on HTTP by default. For HTTPS ingress, place it behind Caddy or nginx.
+
+Caddy example:
+```
+nms.example.com {
+  reverse_proxy 127.0.0.1:8000
+}
+```
+
+Nginx example:
+```
+server {
+  listen 443 ssl http2;
+  server_name nms.example.com;
+  ssl_certificate /etc/letsencrypt/live/nms.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/nms.example.com/privkey.pem;
+
+  client_max_body_size 10m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+## Docker
+
+```bash
+docker compose up -d
+```
+
+Mount `./state` for persistent data and `./secrets` for on-host secrets. The container exposes port `8000`.
 
 ## Configuration
 
@@ -54,6 +95,7 @@ systemctl enable --now nms-nova-fastapi nms-nova-poller nms-nova-retention.timer
 - Service down: `systemctl status nms-nova-fastapi` and `journalctl -u nms-nova-fastapi -n 200`
 - No data: confirm target address/key, then check `/status` for latest sample timestamp
 - Stale file changes not appearing: remove `__pycache__` and restart the FastAPI service
+- Install failed: ensure Python 3.11-3.13, venv created successfully, and port 8000 is free
 
 ## Upgrade
 
@@ -62,6 +104,15 @@ cd /opt/nms-nova
 git pull origin main --rebase
 .venv/bin/pip install -r requirements.txt
 systemctl restart nms-nova-fastapi
+```
+
+## Uninstall / reset
+
+```bash
+systemctl disable --now nms-nova-fastapi nms-nova-poller nms-nova-retention.timer
+rm -f /etc/systemd/system/nms-nova-*
+systemctl daemon-reload
+rm -rf /opt/nms-nova
 ```
 
 ## What it does not do
