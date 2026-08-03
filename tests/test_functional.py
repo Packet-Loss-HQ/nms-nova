@@ -6,7 +6,7 @@ import sqlite3
 import os
 
 BASE = os.environ.get("NMS_BASE_URL", "http://127.0.0.1:8000")
-AUTH = os.environ.get("NMS_BASIC_AUTH", "")
+AUTH = os.environ.get("NMS_BASIC_AUTH", "")  # set NMS_BASIC_AUTH=admin:admin for local runs
 
 
 def request(path, data=None):
@@ -51,7 +51,7 @@ def test_chart_endpoints():
 
 
 def test_public_health():
-    req = urllib.request.Request(BASE + "/healthz", headers={})
+    req = urllib.request.Request(BASE + "/health", headers={})
     with urllib.request.urlopen(req) as r:
         assert r.status == 200
 
@@ -83,3 +83,5 @@ def test_target_toggle():
     assert status == 200
     status, _ = request("/targets/1/toggle", {"enabled": "1"})
     assert status == 200
+
+# NOTE: pytest must be installed separately if running outside CI.

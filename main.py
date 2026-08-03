@@ -67,7 +67,7 @@ if not store.list_alert_rules():
 _loaded_rules = [AlertRule(**{k: v for k, v in r.items() if k in {"metric_name", "threshold", "comparison", "consecutive", "description"}}) for r in store.list_alert_rules()] or _initial_alert_rules[:]
 alert_engine = AlertEngine(rules=_loaded_rules)
 app = FastAPI(title="NMS-Nova", docs_url="/docs", redoc_url="/redoc", version="0.4.0")
-app.mount('/static', StaticFiles(directory='/opt/nms-nova/static'), name='static')
+app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 security = HTTPBasic()
 
 
