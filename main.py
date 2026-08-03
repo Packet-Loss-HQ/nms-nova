@@ -495,7 +495,7 @@ async def setup_demo():
 
 
 PUBLIC_ROUTES = {"/metrics", "/chart", "/health", "/healthz", "/setup"}
-PUBLIC_PREFIXES = ("/static/",)
+PUBLIC_PREFIXES = ("/static/", "/setup", "/setup/")
 
 
 def _is_public(path: str) -> bool:
