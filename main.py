@@ -546,7 +546,7 @@ async def settings_form():
         "<div class='grid'>"
         "<div class='card'><div class='card-header'><div class='card-title'>Account</div></div>"
         "<div class='card-body'>"
-        "<div class='metric-row'><span class='metric-name'>Username</span><span class='metric-value'>nms-nova</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Username</span><span class='metric-value'>{os.getenv('NMS_AUTH_USER', 'admin')}</span></div>"
         "<div class='metric-row'><span class='metric-name'>Password</span><span class='metric-value'>" + masked + "</span></div>"
         "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:8px'>"
         "<div class='field'><label>New password</label><input type='password' name='password' minlength='8' required></div>"
