@@ -457,7 +457,7 @@ def _target_form(target: dict | None = None, metrics: list[dict] | None = None) 
       <div class='field'><label>Tier</label><select name='tier'>%s</select></div>
       <div class='field'><label>SSH key path</label><input name='ssh_key' value='%s'></div>
       <div class='field'><label>Metrics</label><div class='checks'>%s</div></div>
-      <button type='submit'>Save</button> <button type='button' hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
+      <button type='submit' class='primary'>Save</button> <button type='button' hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
     </form>
     """ % (action, method, name, kind_opts, address, probe_opts, tier_opts, ssh_key, metric_checks)
 
@@ -494,7 +494,7 @@ async def settings_v2():
         "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
         "<div id='test-result'></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
-        "<div class='card-body'><button class='button' hx-post='/settings-v2/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "<div class='card-body'><button class='primary' hx-post='/settings-v2/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
         "<input type='hidden' name='_csrf' value='{{csrf}}'>"
         "</div>"
     )
@@ -569,7 +569,7 @@ async def settings_form():
         "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
         "<div id='test-result'></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
-        "<div class='card-body'><button class='button' hx-post='/settings/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "<div class='card-body'><button class='primary' hx-post='/settings/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
         "<input type='hidden' name='_csrf' value='{{csrf}}'>"
         "</div>"
     )
@@ -716,12 +716,12 @@ async def list_alerts_ui():
         f"</div>"
         f"<div class='actions'>"
         f"<a class='button' href='/alerts/{r['id']}/edit'>Edit</a> "
-        f"<button class='button' hx-delete='/alerts/{r['id']}' hx-confirm='Delete {r['metric_name']} rule?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>"
+        f"<button class='danger' hx-delete='/alerts/{r['id']}' hx-confirm='Delete {r['metric_name']} rule?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>"
         f"</div></div></div>"
         for r in rules
     )
     body = (
-        "<div class='page-header'><h2>Alert rules</h2><button hx-get='/alerts/new' hx-target='#main-content' hx-swap='innerHTML'>Add rule</button></div>"
+        "<div class='page-header'><h2>Alert rules</h2><button class='primary' hx-get='/alerts/new' hx-target='#main-content' hx-swap='innerHTML'>Add rule</button></div>"
         "<div class='grid'>" + (cards or "<div class='empty'>No rules</div>") + "</div>"
     )
     return HTMLResponse(_layout("Alerts", body))
@@ -822,11 +822,11 @@ async def list_targets_ui():
         f"<div class='card-meta'>{t.get('kind','')} / {t.get('address','')}</div>"
         f"<div class='actions'><a class='button' href='/targets/{t['id']}'>View</a> "
         f"<a class='button' href='/targets/{t['id']}/edit'>Edit</a> "
-        f"<button class='button' hx-delete='/targets/{t['id']}' hx-confirm='Delete {t['name']}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button></div></div></div>"
+        f"<button class='danger' hx-delete='/targets/{t['id']}' hx-confirm='Delete {t['name']}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button></div></div></div>"
         for t in rows
     )
     body = (
-        "<div class='page-header'><h2>Targets</h2><button hx-get='/targets/new' hx-target='#main-content' hx-swap='innerHTML'>Add target</button></div>"
+        "<div class='page-header'><h2>Targets</h2><button class='primary' hx-get='/targets/new' hx-target='#main-content' hx-swap='innerHTML'>Add target</button></div>"
         "<div class='grid'>" + (cards or "<div class='empty'>No targets</div>") + "</div>"
     )
     return HTMLResponse(_layout("Targets", body))
