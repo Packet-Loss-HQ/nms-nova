@@ -879,10 +879,11 @@ async def target_detail(target_id: int):
     target = store.get_target(target_id)
     if not target:
         return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
-    metrics = store.list_metrics_for_target(target_id)
+    latest = {r["metric_name"]: r for r in store.latest_samples() if r.get("target_id") == target_id}
+    metric_defs = store.list_metrics_for_target(target_id)
     metric_rows = "".join(
-        f"<div class='metric-row'><div><div class='metric-name'>{m.get('name') or m.get('metric_name')}</div><div class='card-meta'>{m.get('unit','')}</div></div><div class='metric-value'>{m.get('last_value', '—')}</div></div>"
-        for m in metrics
+        f"<div class='metric-row'><div><div class='metric-name'>{m.get('name','')}</div><div class='card-meta'>{m.get('unit','') or ''}</div></div><div class='metric-value'>{latest[m.get('name','')]['value'] if m.get('name','') in latest else '—'}</div></div>"
+        for m in metric_defs
     ) or "<div class='empty'>No metrics configured.</div>"
     body = f"""
       <div class='page-header'><h2>{target.get('name','')}</h2>
