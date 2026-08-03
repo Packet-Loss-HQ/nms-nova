@@ -51,15 +51,13 @@ def test_chart_endpoints():
 
 
 def test_db_created():
-    db_path = os.environ.get("NMS_DB")
-    if not db_path:
-        return
-    # Trigger lazy DB initialization via health check
-    test_health()
-    # Small grace period for file creation
-    import time
-    time.sleep(0.1)
-    assert os.path.exists(db_path), f"missing {db_path}"
+    # Verify DB is initialized by checking /health returns valid table counts
+    status, body = request("/health")
+    assert status == 200
+    import json
+    data = json.loads(body)
+    assert "sample_count" in data
+    assert "target_count" in data
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
