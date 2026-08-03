@@ -54,6 +54,11 @@ def test_db_created():
     db_path = os.environ.get("NMS_DB")
     if not db_path:
         return
+    # Trigger lazy DB initialization via health check
+    test_health()
+    # Small grace period for file creation
+    import time
+    time.sleep(0.1)
     assert os.path.exists(db_path), f"missing {db_path}"
     conn = sqlite3.connect(db_path)
     try:
