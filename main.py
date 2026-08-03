@@ -234,8 +234,16 @@ def _render_dashboard() -> str:
                 value = "UP" if value == 1.0 else "DOWN"
                 color = "#0a0" if value == "UP" else "#a22"
             elif metric_name == "interface_total_kbps":
-                unit = " kbps"
-                value = f"{value:,.0f}"
+                _v = value if isinstance(value, (int, float)) else 0
+                if _v >= 1_000_000:
+                    value = f"{_v/1_000_000:,.2f}"
+                    unit = " Gbps"
+                elif _v >= 1_000:
+                    value = f"{_v/1_000:,.2f}"
+                    unit = " Mbps"
+                else:
+                    value = f"{_v:,.0f}"
+                    unit = " kbps"
                 color = "#0a0"
                 if is_error:
                     color = "#a22"
@@ -393,7 +401,7 @@ async def target_chart(target_name: str, range: str = "24h"):
         target_id = target_row["id"]
 
         if range == "7d":
-            bucket = "strftime('%Y-%m-%d %H:00:00', timestamp)"
+            bucket = "strftime('%Y-%m-%d', timestamp)"
             where = "timestamp >= datetime('now', '-7 days')"
         elif range == "30d":
             bucket = "strftime('%Y-%m-%d', timestamp)"
