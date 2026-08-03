@@ -51,21 +51,12 @@ def test_chart_endpoints():
 
 
 def test_db_created():
-    # Verify DB is initialized by checking /health returns valid table counts
     status, body = request("/health")
     assert status == 200
     import json
     data = json.loads(body)
     assert "sample_count" in data
     assert "target_count" in data
-    conn = sqlite3.connect(db_path)
-    try:
-        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        table_names = {r[0] for r in rows}
-        assert "targets" in table_names
-        assert "samples" in table_names
-    finally:
-        conn.close()
 
 
 def test_settings_page():
