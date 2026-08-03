@@ -65,11 +65,15 @@ Alerts are posted when rules in `state/alerts.py` trigger.
 - Service showing DOWN: verify target address/kind/SSH key path and probe command on the target
 - Disk full: run retention manually or prune old backups in `/opt/nms-nova/backups`
 
+### Telegram alerts
+1. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in the service env.
+2. Open `/settings-v2` and confirm Telegram delivery is enabled.
+3. Use **Test delivery** to verify connectivity before relying on alerts.
+
 ## Release Notes
 ### v0.4.0
-- SQLite-backed target management UI at `/targets`
-- Add/edit/delete targets via web UI
-- YAML→SQLite migration on first run
-- Per-target SSH key support
-- Mobile layout fixes for edit/add forms
-- Poller preserves metric-specific params (`service_name`, `container_name`, `interface`)
+- Add `/api/v1` JSON API, scoped tokens, auth middleware
+- Escalation query + delivery retry/timeout controls
+- Branding settings API/UI with live preview
+- `/license/check`, `/upgrade`, commercial wrapper hooks
+- Central public-path auth helper, `/healthz`, docs exposure

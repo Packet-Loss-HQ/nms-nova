@@ -15,7 +15,7 @@ NMS-Nova is built around one constraint: **no agents on the targets**. It probes
 - **SQLite source of truth** — targets/metrics defined in web UI or imported from YAML
 - **Alert engine** — evaluate rules against live samples
 - **Telegram alerts** — built-in bot delivery via `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
-- **Generic webhooks** — POST alert payloads to any endpoint via `NMS_WEBHOOK_URL`
+- **Webhooks** — POST alert payloads to any endpoint via `/settings-v2`
 - **Auth** — HTTP Basic or Bearer token
 - **systemd services** — poller, FastAPI, retention timer
 - **Dual license** — MIT for public portfolio, commercial/all-rights-reserved for SMB/ MSP use
@@ -95,7 +95,10 @@ systemctl enable --now nms-nova-poller nms-nova-fastapi nms-nova-retention.timer
 
 ## Alerting
 
-Alerts are evaluated on each `/health` and `/alerts` request against the latest samples. When rules in `state/alerts.py` trigger, NMS-Nova posts to:
+Rules are evaluated on each `/health` and `/alerts` request against the latest samples. When a rule matches, NMS-Nova delivers via:
+- Telegram Bot API
+- Generic webhook
+Delivery behavior is configurable in `/settings-v2`.
 
 - **Telegram** if `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set
 - **Generic webhook** if `NMS_WEBHOOK_URL` is set
@@ -106,7 +109,7 @@ Alerts are evaluated on each `/health` and `/alerts` request against the latest 
 - `high_cpu` — CPU usage above threshold
 - `high_memory` — memory usage above threshold
 
-Rules are defined in `state/alerts.py` and evaluated per target per metric.
+Rules are managed in the `/alerts` UI and evaluated per target per metric.
 
 ## Dashboard
 
