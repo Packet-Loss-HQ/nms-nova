@@ -832,88 +832,12 @@ async def list_targets_ui():
     return HTMLResponse(_layout("Targets", body))
 
 
-@app.get("/targets/{target_id}")
-async def target_detail(target_id: int):
-    target = store.get_target(target_id)
-    if not target:
-        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
-    rows = store.latest_samples()
-    target_rows = [r for r in rows if r.get("target_name") == target.get("name")]
-    target_metric_names = {r.get("metric_name") for r in target_rows}
-    chart_metrics = [m for m in target_metric_names if m != "service_up"]
-    items = []
-    chart_items = []
-    for row in target_rows:
-        value = row.get("value")
-        metric_name = row.get("metric_name")
-        is_error = bool(row.get("error"))
-        if metric_name == "service_up":
-            unit = ""
-            value = "UP" if value == 1.0 else "DOWN"
-            color = "#0a0" if value == "UP" else "#a22"
-        elif metric_name == "interface_total_kbps":
-            unit = " kbps"
-            value = f"{value:,.0f}"
-            color = "#0a0"
-            if is_error:
-                color = "#a22"
-        else:
-            unit = "%"
-            color = "#0a0"
-            if is_error:
-                color = "#a22"
-            elif isinstance(value, (int, float)):
-                if value >= 90:
-                    color = "#a22"
-                elif value >= 70:
-                    color = "#b90"
-        display = f"{value}{unit}"
-        if is_error:
-            display += " (error)"
-        items.append(
-            f"<div class='metric-row'><span class='metric-name'>{metric_name}</span>"
-            f"<span class='metric-value' style='color:{color}'>{display}</span></div>"
-        )
-        if metric_name != "service_up":
-            chart_items.append(metric_name)
-    chart_html = ""
-    if chart_items:
-        ranges = ["24h", "7d", "30d"]
-        chart_html = (
-            "<div class='chart-container' data-target='" + target["name"] + "' data-range='24h'>"
-            "<div class='chart-header'>"
-            + "".join(
-                f"<button data-range='{r}' class='range-btn {'active' if r=='24h' else ''}' onclick='window._setRange(\"{target['name']}\", \"{r}\")'>{r}</button>"
-                for r in ranges
-            )
-            + "</div>"
-            + "".join(
-                f"<div class='chart-wrap'><canvas id='chart-{target['name']}-{m}'></canvas><div class='chart-label'>{m}</div></div>"
-                for m in chart_items
-            )
-            + "</div>"
-        )
-    body = (
-        "<div class='page-header'><h2>" + target["name"] + "</h2>"
-        "<div class='actions'><a class='button' href='/targets/" + str(target["id"]) + "/edit'>Edit</a> "
-        "<a class='button' href='/targets'>Back</a></div></div>"
-        "<div class='grid'><div class='card'><div class='card-header'><span class='card-title'>Target</span></div>"
-        "<div class='card-body'>"
-        f"<div class='metric-row'><span class='metric-name'>Kind</span><span class='metric-value'>{target.get('kind','')}</span></div>"
-        f"<div class='metric-row'><span class='metric-name'>Address</span><span class='metric-value'>{target.get('address','')}</span></div>"
-        f"<div class='metric-row'><span class='metric-name'>Probe type</span><span class='metric-value'>{target.get('probe_type','')}</span></div>"
-        f"<div class='metric-row'><span class='metric-name'>Tier</span><span class='metric-value'>{target.get('tier','T2')}</span></div>"
-        f"<div class='metric-row'><span class='metric-name'>SSH key path</span><span class='metric-value' style='word-break:break-all'>{target.get('ssh_key','') or '-'}</span></div>"
-        "</div></div>"
-        "<div class='card'><div class='card-header'><span class='card-title'>Latest metrics</span></div>"
-        "<div class='card-body'>" + ("".join(items) if items else "<div class='empty'>No samples yet</div>") + "</div></div>"
-        "</div>"
-        + chart_html
-    )
-    return HTMLResponse(_layout(target["name"], body))
-
-
 @app.get("/targets/new")
+async def new_target_form():
+    return HTMLResponse(_layout("New target", _target_form()))
+
+
+@app.get("/targets/{target_id}")
 async def new_target_form():
     return HTMLResponse(_layout("New target", _target_form()))
 
