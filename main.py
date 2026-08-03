@@ -105,7 +105,7 @@ def _is_api_request(req: Request) -> bool:
 def _is_public_path(path: str) -> bool:
     public_prefixes = (
         "/health", "/healthz", "/metrics", "/chart",
-        "/static", "/api/v1", "/docs", "/redoc", "/openapi.json", "/license/check"
+        "/static", "/api/v1", "/docs", "/redoc", "/openapi.json", "/license/check", "/setup"
     )
     return path in public_prefixes or any(path.startswith(p) for p in public_prefixes)
 
@@ -494,7 +494,7 @@ async def setup_demo():
     return HTMLResponse(msg)
 
 
-PUBLIC_ROUTES = {"/metrics", "/chart"}
+PUBLIC_ROUTES = {"/metrics", "/chart", "/health", "/healthz", "/setup"}
 PUBLIC_PREFIXES = ("/static/",)
 
 

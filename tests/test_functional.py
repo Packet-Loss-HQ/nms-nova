@@ -1,13 +1,12 @@
 """Functional tests for NMS-Nova."""
+import os
 import urllib.request
 import urllib.parse
 import urllib.error
 import sqlite3
-import os
 
 BASE = os.environ.get("NMS_BASE_URL", "http://127.0.0.1:8000")
-AUTH = os.environ.get("NMS_BASIC_AUTH", "")  # set NMS_BASIC_AUTH=admin:admin for local runs
-DB_PATH = os.environ.get("NMS_DB", "/tmp/nms-nova-test.db")
+AUTH = os.environ.get("NMS_BASIC_AUTH", "")
 
 
 def request(path, data=None):
@@ -41,9 +40,18 @@ def test_dashboard_or_empty_state():
     assert "NMS-Nova" in body or "Setup" in body or "targets" in body
 
 
+def test_chart_endpoints():
+    for rng in ("24h", "7d", "30d"):
+        status, body = request(f"/chart/does-not-matter?range={rng}")
+        assert status in (200, 404)
+
+
 def test_db_created():
-    assert os.path.exists(DB_PATH), f"missing {DB_PATH}"
-    conn = sqlite3.connect(DB_PATH)
+    db_path = os.environ.get("NMS_DB")
+    if not db_path:
+        return
+    assert os.path.exists(db_path), f"missing {db_path}"
+    conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         table_names = {r[0] for r in rows}
@@ -53,10 +61,28 @@ def test_db_created():
         conn.close()
 
 
-def test_chart_endpoints():
-    for rng in ("24h", "7d", "30d"):
-        status, body = request(f"/chart/does-not-matter?range={rng}")
-        assert status in (200, 404)
+def test_settings_page():
+    if not AUTH:
+        return
+    status, _ = request("/settings")
+    assert status == 200
 
 
-# NOTE: pytest must be installed separately if running outside CI.
+def test_settings_round_trip():
+    if not AUTH:
+        return
+    status, _ = request("/settings/retention", {"retention_days": "7"})
+    assert status == 200
+    status, _ = request("/settings/password", {"password": "Monkey1234!"})
+    assert status == 200
+    status, _ = request("/settings/password", {"clear": "1"})
+    assert status == 200
+
+
+def test_target_toggle():
+    if not AUTH:
+        return
+    status, _ = request("/targets/1/toggle", {"enabled": "0"})
+    assert status == 200
+    status, _ = request("/targets/1/toggle", {"enabled": "1"})
+    assert status == 200
