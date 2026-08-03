@@ -137,15 +137,6 @@ async def auth_middleware(request: Request, call_next):
     return Response(headers={"WWW-Authenticate": "Basic"}, status_code=401)
 
 
-@app.get("/license/check")
-def license_check():
-    settings = store.get_branding_settings()
-    return JSONResponse({
-        "mode": settings.get("license_mode", "mit"),
-        "commercial_features_enabled": settings.get("license_mode") == "commercial",
-        "support_contact": "sales@packet-loss.net" if settings.get("license_mode") == "commercial" else None,
-    })
-
 
 
 def _load_delivery_settings() -> dict:
@@ -1353,13 +1344,5 @@ async def upgrade_page():
     </div>
     """
     return HTMLResponse(_layout("Upgrade", body))
-
-    settings = store.get_branding_settings()
-    mode = settings.get("license_mode", "mit")
-    return JSONResponse({
-        "mode": mode,
-        "commercial_features_enabled": mode == "commercial",
-        "support_contact": "sales@packet-loss.net" if mode == "commercial" else None,
-    })
 
 app.include_router(api_router)
