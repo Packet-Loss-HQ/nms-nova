@@ -10,16 +10,31 @@ Self-hosted, owner-operated network monitoring for homelabs and small-scale infr
 
 ## Install
 
-1. Copy the repo to the host that will run the web UI and poller.
-2. Install dependencies: `pip install -r requirements.txt`
-3. Initialize storage: the app creates SQLite on first run.
-4. Start services:
-   - `python3 -m scripts.poll_loop` for the poller
-   - `uvicorn main:app --host 0.0.0.0 --port 8000` for the web UI
+```bash
+git clone https://github.com/Packet-Loss-HQ/nms-nova.git /opt/nms-nova
+cd /opt/nms-nova
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp targets.yaml.example targets.yaml
+mkdir -p secrets state backups
+```
 
 ## Systemd
 
-Example unit files are in `scripts/systemd/`. Enable both `nms-nova-poller.service` and `nms-nova-fastapi.service`.
+```bash
+cp scripts/nms-nova-fastapi.service /etc/systemd/system/
+cp scripts/nms-nova-poller.service /etc/systemd/system/
+cp scripts/nms-nova-retention.service /etc/systemd/system/
+cp scripts/nms-nova-retention.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now nms-nova-fastapi nms-nova-poller nms-nova-retention.timer
+```
+
+## Quick start
+
+1. Open `http://<host>:8000/setup`.
+2. Add a target from Setup or `/targets/new`.
+3. Confirm probes appear on the Dashboard.
+4. Configure alert delivery in Settings if needed.
 
 ## Configuration
 
@@ -33,6 +48,21 @@ Example unit files are in `scripts/systemd/`. Enable both `nms-nova-poller.servi
 - Default web access is unauthenticated; enable a password in Settings if exposed beyond localhost.
 - Telegram/webhook secrets stay on-host and are not committed.
 - Do not expose the SQLite database or secrets directory to untrusted users.
+
+## Troubleshooting
+
+- Service down: `systemctl status nms-nova-fastapi` and `journalctl -u nms-nova-fastapi -n 200`
+- No data: confirm target address/key, then check `/status` for latest sample timestamp
+- Stale file changes not appearing: remove `__pycache__` and restart the FastAPI service
+
+## Upgrade
+
+```bash
+cd /opt/nms-nova
+git pull origin main --rebase
+.venv/bin/pip install -r requirements.txt
+systemctl restart nms-nova-fastapi
+```
 
 ## What it does not do
 

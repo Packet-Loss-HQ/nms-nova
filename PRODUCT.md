@@ -20,6 +20,13 @@ NMS-Nova is a lightweight, self-hosted network monitoring system built for homel
 - No external telemetry or usage reporting.
 - No enterprise RBAC, multi-tenant isolation, or compliance modules.
 
+## Commercial readiness
+
+NMS-Nova is structured for commercial packaging if desired:
+- Dual license: MIT for portfolio/non-commercial; proprietary/all rights reserved for commercial deployments.
+- Support path: direct support via `sales@packet-loss.net` or marketplace listing.
+- Extensible delivery: webhook/alert channels can be extended for managed-service or white-label use cases.
+
 ## Commercial intent
 Nova is offered under a dual model:
 - MIT for public portfolio, learning, and non-commercial use.

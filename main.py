@@ -313,7 +313,10 @@ def _render_dashboard() -> str:
             + "</div>"
         )
 
-    body = alert_section + "<div class='grid'>" + "".join(cards) + "</div>"
+    if not cards:
+        body = "<div class='empty'><p>No targets yet.</p><a class='button primary' href='/setup'>Go to Setup</a></div>"
+    else:
+        body = alert_section + "<div class='grid'>" + "".join(cards) + "</div>"
     return _layout('Dashboard', body)
 @app.get("/healthz")
 async def healthz():
@@ -453,6 +456,42 @@ async def metrics_prometheus():
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return HTMLResponse(_render_dashboard())
+
+@app.get("/setup")
+async def setup():
+    body = """
+    <div class='page-header'><h2>Setup</h2></div>
+    <div class='grid'>
+      <div class='card'>
+        <div class='card-header'><div class='card-title'>Quick start</div></div>
+        <div class='card-body'>
+          <p class='empty'>Add your first target, then return here to see live data.</p>
+          <a class='button primary' href='/targets/new'>Add target</a>
+        </div>
+      </div>
+      <div class='card'>
+        <div class='card-header'><div class='card-title'>Demo mode</div></div>
+        <div class='card-body'>
+          <p class='empty'>Generate sample data to explore the UI without real probes.</p>
+          <button class='primary' hx-post='/setup/demo' hx-target='#main-content' hx-swap='innerHTML'>Load demo data</button>
+        </div>
+      </div>
+    </div>
+    """
+    return HTMLResponse(_layout("Setup", body))
+
+@app.post("/setup/demo")
+async def setup_demo():
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("seed_demo_data", "/opt/nms-nova/scripts/seed_demo_data.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.main()
+        msg = "<div class='empty'>Demo data loaded. Go to <a href='/'>Dashboard</a>.</div>"
+    except Exception as exc:
+        msg = f"<div class='empty'>Demo load failed: {exc}</div>"
+    return HTMLResponse(msg)
 
 
 PUBLIC_ROUTES = {"/metrics", "/chart"}
