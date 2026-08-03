@@ -55,8 +55,9 @@ def test_db_created():
     assert status == 200
     import json
     data = json.loads(body)
-    assert "sample_count" in data
-    assert "target_count" in data
+    assert "db" in data
+    assert "sample_count" in data["db"]
+    assert "target_count" in data["db"]
 
 
 def test_settings_page():
