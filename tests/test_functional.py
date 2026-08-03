@@ -9,11 +9,15 @@ BASE = os.environ.get("NMS_BASE_URL", "http://127.0.0.1:8000")
 AUTH = os.environ.get("NMS_BASIC_AUTH", "")
 
 
+def _auth_headers():
+    return {"Authorization": AUTH} if AUTH else {}
+
+
 def request(path, data=None):
     req = urllib.request.Request(
         BASE + path,
         data=urllib.parse.urlencode(data).encode() if data else None,
-        headers={"Authorization": AUTH},
+        headers=_auth_headers(),
         method="POST" if data else "GET",
     )
     try:
