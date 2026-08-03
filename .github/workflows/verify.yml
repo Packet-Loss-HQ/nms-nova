@@ -11,6 +11,7 @@ jobs:
       - run: python -m venv .venv
       - run: .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
       - run: .venv/bin/python -m py_compile main.py scripts/*.py state/*.py probes/*.py tests/test_functional.py
+      - run: mkdir -p secrets state backups
       - run: .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 &
       - run: bash -lc 'for i in {1..30}; do curl -sf http://127.0.0.1:8000/healthz && exit 0; sleep 1; done; echo "App failed to start"; exit 1'
       - run: NMS_BASE_URL=http://127.0.0.1:8000 NMS_DB=/tmp/nms-nova-test.db .venv/bin/pytest tests/test_functional.py -q
