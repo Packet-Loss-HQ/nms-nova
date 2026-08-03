@@ -1,6 +1,17 @@
 # Changelog
 
 ## [Unreleased]
+- Add verbose target detail view with probe evidence, inline metric config, per-metric history, and alert rule context
+- Add probe reliability badge to dashboard cards with success-rate color coding
+- Add target enable/disable toggle in target detail page
+- Add Settings page: account management, password change/clear, retention controls, alert delivery config
+- Add optional Basic web auth with middleware and public route exemptions for `/metrics` and `/static/*`
+- Add README.md, PRODUCT.md, LICENSE.txt
+- Fix stale `__pycache__` masking store changes during deployment
+- Remove stale `/settings-v2` routes and normalize nav to `/settings`
+- Fix chart range handling: 7d range uses daily buckets instead of hourly
+- Fix HTMX fragment handling for `/targets/new` and `/alerts/new`
+- Add kbps auto-scaling for `interface_total_kbps` on dashboard cards
 
 ## v0.4.0 - 2026-08-02
 - Add `/api/v1` JSON endpoints: targets, metrics, alert rules, delivery settings, delivery log, pending escalations
