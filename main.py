@@ -485,9 +485,7 @@ async def web_auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-@app.get("/settings")
-async def settings_page():
-    return HTMLResponse("<div hx-redirect='/settings-v2'></div>")
+
 
 TARGET_KINDS = ("lxc", "ssh", "docker")
 METRIC_OPTIONS = [
@@ -537,83 +535,6 @@ def _target_form(target: dict | None = None, metrics: list[dict] | None = None) 
 
 
 
-@app.get("/settings-v2")
-async def settings_v2():
-    s = store.get_delivery_settings()
-    masked_token = "••••••••" if s.get("telegram_bot_token") else ""
-    masked_chat = "••••••••" if s.get("telegram_chat_id") else ""
-    masked_webhook = "••••••••" if s.get("webhook_url") else ""
-    body = (
-        "<div class='page-header'><h2>Alert delivery</h2></div>"
-        "<div class='grid'>"
-        "<div class='card'><div class='card-header'><span class='card-title'>Telegram</span></div>"
-        "<div class='card-body'>"
-        "<form hx-post='/settings-v2/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
-        f"<div class='field'><label>Enable Telegram</label><select name='telegram_enabled'>"
-        f"<option value='1' {'selected' if s.get('telegram_enabled') else ''}>Yes</option>"
-        f"<option value='0' {'selected' if not s.get('telegram_enabled') else ''}>No</option>"
-        "</select></div>"
-        f"<div class='field'><label>Bot token</label><input type='password' name='telegram_bot_token' value='' placeholder='{masked_token}' autocomplete='new-password'></div>"
-        f"<div class='field'><label>Chat ID</label><input name='telegram_chat_id' value='{masked_chat if s.get('telegram_chat_id') else ''}'></div>"
-        "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
-        "<div class='card'><div class='card-header'><span class='card-title'>Webhook</span></div>"
-        "<div class='card-body'>"
-        "<form hx-post='/settings-v2/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
-        f"<div class='field'><label>Enable webhook</label><select name='webhook_enabled'>"
-        f"<option value='1' {'selected' if s.get('webhook_enabled') else ''}>Yes</option>"
-        f"<option value='0' {'selected' if not s.get('webhook_enabled') else ''}>No</option>"
-        "</select></div>"
-        f"<div class='field'><label>Webhook URL</label><input name='webhook_url' value='{masked_webhook if s.get('webhook_url') else ''}'></div>"
-        "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
-        "<div id='test-result'></div>"
-        "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
-        "<div class='card-body'><button class='primary' hx-post='/settings-v2/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
-        "<input type='hidden' name='_csrf' value='{{csrf}}'>"
-        "</div>"
-    )
-    return HTMLResponse(_layout("Alert delivery", body), status_code=200)
-
-
-@app.post("/settings-v2/delivery")
-async def save_delivery_v2(request: Request):
-    form = await request.form()
-    if form.get("_csrf") != request.cookies.get("_csrf"):
-        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
-    settings = {
-        "telegram_enabled": form.get("telegram_enabled") == "1",
-        "telegram_bot_token": form.get("telegram_bot_token", ""),
-        "telegram_chat_id": form.get("telegram_chat_id", ""),
-        "webhook_enabled": form.get("webhook_enabled") == "1",
-        "webhook_url": form.get("webhook_url", ""),
-    }
-    store.save_delivery_settings(settings)
-    global _delivery_settings
-    _delivery_settings = settings
-    return HTMLResponse(_post_save_redirect("/settings-v2"))
-
-
-@app.post("/settings-v2/test")
-async def test_delivery_v2(request: Request):
-    form = await request.form()
-    if form.get("_csrf") != request.cookies.get("_csrf"):
-        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
-    settings = store.get_delivery_settings()
-    test_alerts = [
-        {"target_name": "test",
-         "metric_name": "test_metric",
-         "value": 1,
-         "description": "Test alert delivery"},
-    ]
-    _post_webhook_with_settings(test_alerts, settings)
-    recent = store._conn().execute("SELECT destination, status, error, created_at FROM delivery_log ORDER BY id DESC LIMIT 2").fetchall()
-    rows = "".join(
-        f"<div class='metric-row'><span class='metric-name'>{r[0]}</span><span class='metric-value'>{'OK' if r[1] and r[1] < 400 else 'FAIL'} {r[1] or 0}</span></div>"
-        + (f"<div class='empty' style='font-size:0.8rem'>{r[2]}</div>" if r[2] else "")
-        for r in recent
-    )
-    return HTMLResponse(f"<div class='empty'>Test complete</div>{rows}")
-
-
 @app.get("/settings")
 async def settings_form():
     delivery = store.get_delivery_settings()
@@ -623,23 +544,24 @@ async def settings_form():
     body = (
         "<div class='page-header'><h2>Settings</h2></div>"
         "<div class='grid'>"
+        "<div class='card'><div class='card-header'><div class='card-title'>Account</div></div>"
+        "<div class='card-body'>"
+        "<div class='metric-row'><span class='metric-name'>Username</span><span class='metric-value'>nms-nova</span></div>"
+        "<div class='metric-row'><span class='metric-name'>Password</span><span class='metric-value'>" + masked + "</span></div>"
+        "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:8px'>"
+        "<div class='field'><label>New password</label><input type='password' name='password' minlength='8' required></div>"
+        "<button type='submit' class='primary'>Change password</button>"
+        "</form>"
+        "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:8px'>"
+        "<input type='hidden' name='clear' value='1'>"
+        "<button type='submit' class='danger'>Clear password</button>"
+        "</form>"
+        "</div></div>"
         "<div class='card'><div class='card-header'><div class='card-title'>Retention</div></div>"
         "<div class='card-body'>"
         "<form hx-post='/settings/retention' hx-target='#main-content' hx-swap='innerHTML'>"
         f"<div class='field'><label>Keep samples for (days)</label><input type='number' name='retention_days' value='{retention}' min='1' max='365' required></div>"
         "<button type='submit' class='primary'>Save retention</button>"
-        "</form>"
-        "</div></div>"
-        "<div class='card'><div class='card-header'><div class='card-title'>Web access</div></div>"
-        "<div class='card-body'>"
-        "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML'>"
-        f"<div class='field'><label>Current password</label><input type='password' value='{masked}' disabled></div>"
-        "<div class='field'><label>New password</label><input type='password' name='password' minlength='8' required></div>"
-        "<button type='submit' class='primary'>Set password</button>"
-        "</form>"
-        "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:8px'>"
-        "<input type='hidden' name='clear' value='1'>"
-        "<button type='submit' class='danger'>Clear password</button>"
         "</form>"
         "</div></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Telegram</span></div>"
@@ -1176,8 +1098,7 @@ def _layout(title: str, body: str) -> str:
       <a href='/'>Dashboard</a>
       <a href='/targets'>Targets</a>
       <a href='/alerts'>Alerts</a>
-      <a href='/settings-v2'>Settings</a>
-      <a href='/settings/branding'>Branding</a>
+      <a href='/settings'>Settings</a>
     </nav>
   </header>
   <main id='main-content'>
