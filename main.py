@@ -225,6 +225,8 @@ def _render_dashboard() -> str:
     for target_name, metrics in sorted(targets.items()):
         items = []
         chart_items = []
+        reliability = None
+        target_id_for_card = None
         for m in metrics:
             value = m["value"]
             metric_name = m["metric_name"]
@@ -266,6 +268,10 @@ def _render_dashboard() -> str:
             )
             if metric_name != "service_up":
                 chart_items.append(metric_name)
+            if target_id_for_card is None:
+                target_id_for_card = m.get("target_id")
+        if target_id_for_card is not None:
+            reliability = store.probe_reliability(target_id_for_card)
 
         chart_html = ""
         if chart_items:
@@ -285,8 +291,12 @@ def _render_dashboard() -> str:
                 + "</div>"
             )
 
+        reliability_badge = ""
+        if reliability is not None:
+            rel_class = "rel-ok" if reliability["success_rate"] >= 95 else "rel-warn" if reliability["success_rate"] >= 80 else "rel-error"
+            reliability_badge = f"<span class='reliability-badge {rel_class}'>{reliability['success_rate']:.0f}% probe success</span>"
         cards.append(
-            f"<div class='card'><div class='card-header'><a class='card-title' href='/targets/{target_map[target_name]['id']}' style='text-decoration:none;color:inherit'>{target_name}</a><span class='tier-badge tier-{tier_map.get(target_name, 'T2').lower()}'>{tier_map.get(target_name, 'T2')}</span></div>"
+            f"<div class='card'><div class='card-header'><a class='card-title' href='/targets/{target_map[target_name]['id']}' style='text-decoration:none;color:inherit'>{target_name}</a>{reliability_badge}<span class='tier-badge tier-{tier_map.get(target_name, 'T2').lower()}'>{tier_map.get(target_name, 'T2')}</span></div>"
             + "<div class='card-body'>" + "".join(items) + "</div>"
             + chart_html
             + "</div>"
@@ -445,7 +455,39 @@ async def index():
     return HTMLResponse(_render_dashboard())
 
 
-# --- Target management UI ---
+PUBLIC_ROUTES = {"/metrics", "/chart"}
+PUBLIC_PREFIXES = ("/static/",)
+
+
+def _is_public(path: str) -> bool:
+    if path in PUBLIC_ROUTES:
+        return True
+    for prefix in PUBLIC_PREFIXES:
+        if path.startswith(prefix):
+            return True
+    return False
+
+
+@app.middleware("http")
+async def web_auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if not _is_public(path):
+        settings = store.get_settings()
+        if settings.get("web_auth_enabled") and settings.get("web_password_hash"):
+            auth = request.headers.get("authorization", "")
+            try:
+                decoded = __import__("base64").b64decode(auth.split(" ", 1)[1]).decode()
+                username, password = decoded.split(":", 1)
+            except Exception:
+                username = password = None
+            if username != "nms-nova" or __import__("hashlib").sha256(password.encode()).hexdigest() != settings["web_password_hash"]:
+                return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": "Basic"})
+    return await call_next(request)
+
+
+@app.get("/settings")
+async def settings_page():
+    return HTMLResponse("<div hx-redirect='/settings-v2'></div>")
 
 TARGET_KINDS = ("lxc", "ssh", "docker")
 METRIC_OPTIONS = [
@@ -574,37 +616,50 @@ async def test_delivery_v2(request: Request):
 
 @app.get("/settings")
 async def settings_form():
-    s = store.get_delivery_settings()
+    delivery = store.get_delivery_settings()
+    general = store.get_settings()
+    retention = general.get("retention_days", 30)
+    masked = "••••••••" if general.get("web_password_hash") else ""
     body = (
-        "<div class='page-header'><h2>Alert delivery</h2></div>"
+        "<div class='page-header'><h2>Settings</h2></div>"
         "<div class='grid'>"
+        "<div class='card'><div class='card-header'><div class='card-title'>Retention</div></div>"
+        "<div class='card-body'>"
+        "<form hx-post='/settings/retention' hx-target='#main-content' hx-swap='innerHTML'>"
+        f"<div class='field'><label>Keep samples for (days)</label><input type='number' name='retention_days' value='{retention}' min='1' max='365' required></div>"
+        "<button type='submit' class='primary'>Save retention</button>"
+        "</form>"
+        "</div></div>"
+        "<div class='card'><div class='card-header'><div class='card-title'>Web access</div></div>"
+        "<div class='card-body'>"
+        "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML'>"
+        f"<div class='field'><label>Current password</label><input type='password' value='{masked}' disabled></div>"
+        "<div class='field'><label>New password</label><input type='password' name='password' minlength='8' required></div>"
+        "<button type='submit' class='primary'>Set password</button>"
+        "</form>"
+        "<form hx-post='/settings/password' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:8px'>"
+        "<input type='hidden' name='clear' value='1'>"
+        "<button type='submit' class='danger'>Clear password</button>"
+        "</form>"
+        "</div></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Telegram</span></div>"
         "<div class='card-body'>"
         "<form hx-post='/settings/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
         f"<div class='field'><label>Enable Telegram</label><select name='telegram_enabled'>"
-        f"<option value='1' {'selected' if s.get('telegram_enabled') else ''}>Yes</option>"
-        f"<option value='0' {'selected' if not s.get('telegram_enabled') else ''}>No</option>"
+        f"<option value='1' {'selected' if delivery.get('telegram_enabled') else ''}>Yes</option>"
+        f"<option value='0' {'selected' if not delivery.get('telegram_enabled') else ''}>No</option>"
         "</select></div>"
-        f"<div class='field'><label>Bot token</label><input name='telegram_bot_token' value='{s.get('telegram_bot_token','')}'></div>"
-        f"<div class='field'><label>Chat ID</label><input name='telegram_chat_id' value='{s.get('telegram_chat_id','')}'></div>"
-        "<button type='submit'>Save</button></form></div></div>"
-        "<div class='card'><div class='card-header'><span class='card-title'>Webhook</span></div>"
-        "<div class='card-body'>"
-        "<form hx-post='/settings/delivery' hx-target='#main-content' hx-swap='innerHTML'>"
-        f"<div class='field'><label>Enable webhook</label><select name='webhook_enabled'>"
-        f"<option value='1' {'selected' if s.get('webhook_enabled') else ''}>Yes</option>"
-        f"<option value='0' {'selected' if not s.get('webhook_enabled') else ''}>No</option>"
-        "</select></div>"
-        f"<div class='field'><label>Webhook URL</label><input name='webhook_url' value='{s.get('webhook_url','')}'></div>"
-        f"<div class='field'><label>Webhook secret (optional HMAC)</label><input type='password' name='webhook_secret' value='' placeholder='{'••••••••' if s.get('webhook_secret') else ''}' autocomplete='new-password'></div>"
-        "<input type='hidden' name='_csrf' value='{{csrf}}'><button type='submit'>Save</button></form></div></div>"
+        f"<div class='field'><label>Bot token</label><input name='telegram_bot_token' value='{delivery.get('telegram_bot_token','')}'></div>"
+        f"<div class='field'><label>Chat ID</label><input name='telegram_chat_id' value='{delivery.get('telegram_chat_id','')}'></div>"
+        "<button type='submit' class='primary'>Save</button>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'>"
+        "</form></div></div>"
         "<div id='test-result'></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
         "<div class='card-body'><button class='primary' hx-post='/settings/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
-        "<input type='hidden' name='_csrf' value='{{csrf}}'>"
         "</div>"
     )
-    return HTMLResponse(_layout("Alert delivery", body))
+    return HTMLResponse(_layout("Settings", body))
 
 
 @app.post("/settings/delivery")
@@ -942,9 +997,14 @@ async def target_detail(target_id: int):
     else:
         alert_section = "<div class='card'><div class='card-header'><div class='card-title'>Watched by rules</div></div><div class='empty'>No alert rules reference this target.</div></div>"
 
+    enabled_label = "Disable" if target.get("enabled") else "Enable"
     body = f"""
       <div class='page-header'><h2>{target.get('name','')}</h2>
         <div class='actions'>
+          <form hx-post='/targets/{target_id}/toggle' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'>
+            <button type='submit' class='button'>{enabled_label}</button>
+            <input type='hidden' name='enabled' value='{0 if target.get('enabled') else 1}'>
+          </form>
           <a class='button' href='/targets/{target_id}/edit'>Edit target</a>
           <button class='danger' hx-delete='/targets/{target_id}' hx-confirm='Delete {target.get('name','')}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>
           <button hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Back</button>
@@ -1071,10 +1131,15 @@ async def metric_history(target_id: int, metric_name: str, range: str = "24h"):
     return {"target_id": target_id, "metric": metric_name, "range": range, "series": series}
 
 
-@app.delete("/targets/{target_id}")
-async def delete_target(target_id: int):
-    store.delete_target(target_id)
-    return HTMLResponse(_post_save_redirect("/targets"))
+@app.post("/targets/{target_id}/toggle")
+async def toggle_target(target_id: int, request: Request):
+    form = await request.form()
+    enabled = form.get("enabled", "0") == "1"
+    store.set_target_enabled(target_id, enabled)
+    target = store.get_target(target_id)
+    if not target:
+        return HTMLResponse("<div class='empty'>Not found</div>", status_code=404)
+    return HTMLResponse(_post_save_redirect(f"/targets/{target_id}"))
 
 
 def _post_save_redirect(location: str) -> str:

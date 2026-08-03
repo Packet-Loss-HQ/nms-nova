@@ -188,3 +188,14 @@ nav.open { display:block; margin-top: 0.75rem; }
   background: rgba(16, 185, 129, 0.15);
   color: #10b981;
 }
+.reliability-badge {
+  margin-left: 8px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148,163,184,0.15);
+  color: #94a3b8;
+}
+.rel-ok { background: rgba(16,185,129,0.15); color: #10b981; }
+.rel-warn { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.rel-error { background: rgba(248,113,113,0.15); color: #f87171; }

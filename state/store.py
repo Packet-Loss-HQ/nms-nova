@@ -149,6 +149,16 @@ class MetricsStore:
                 )
                 """
             )
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    retention_days INTEGER NOT NULL DEFAULT 30,
+                    web_password_hash TEXT,
+                    web_auth_enabled BOOLEAN NOT NULL DEFAULT 0
+                )
+                """
+            )
             con.commit()
         finally:
             con.close()
@@ -301,6 +311,55 @@ class MetricsStore:
         con = sqlite3.connect(self.db_path)
         try:
             con.execute(f"UPDATE targets SET {sets} WHERE id=?", vals)
+            con.commit()
+        finally:
+            con.close()
+
+    def set_target_enabled(self, target_id: int, enabled: bool) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE targets SET enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (1 if enabled else 0, target_id))
+            con.commit()
+        finally:
+            con.close()
+
+    def probe_reliability(self, target_id: int) -> dict:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            total = con.execute(
+                "SELECT count(*) FROM metric_samples WHERE target_id=? AND timestamp >= datetime('now','-24 hours')",
+                (target_id,),
+            ).fetchone()[0]
+            errors = con.execute(
+                "SELECT count(*) FROM metric_samples WHERE target_id=? AND timestamp >= datetime('now','-24 hours') AND error IS NOT NULL AND error != ''",
+                (target_id,),
+            ).fetchone()[0]
+            success = max(total - errors, 0)
+            rate = (success / total * 100) if total else 100.0
+            return {"total": total, "errors": errors, "success_rate": round(rate, 1)}
+        finally:
+            con.close()
+
+    def get_settings(self) -> dict:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM settings WHERE id=1").fetchone()
+            return dict(row) if row else {"retention_days": 30, "web_auth_enabled": 0, "web_password_hash": None}
+        finally:
+            con.close()
+
+    def save_settings(self, **fields: Any) -> None:
+        allowed = {"retention_days", "web_password_hash", "web_auth_enabled"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [1]
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(f"UPDATE settings SET {sets} WHERE id=?", vals)
             con.commit()
         finally:
             con.close()
