@@ -6,9 +6,11 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional
+from fastapi import Request
 
 import httpx
 from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
@@ -68,14 +70,35 @@ app = FastAPI(title="NMS-Nova", docs_url="/docs", redoc_url="/redoc", version="0
 app.mount('/static', StaticFiles(directory='/opt/nms-nova/static'), name='static')
 security = HTTPBasic()
 
+
+class HTMXFragmentMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.headers.get("hx-request") and response.headers.get("content-type", "").startswith("text/html"):
+            try:
+                body = response.body
+                if isinstance(body, bytes):
+                    text = body.decode("utf-8", errors="replace")
+                    start = text.find("<main id='main-content'>")
+                    end = text.find("</main>", start)
+                    if start != -1 and end != -1:
+                        inner = text[start + len("<main id='main-content'>"):end].strip()
+                        return HTMLResponse(inner, status_code=response.status_code)
+            except Exception:
+                pass
+        return response
+
+
+app.add_middleware(HTMXFragmentMiddleware)
+
 BEARER_TOKEN = os.getenv("NMS_API_TOKEN", "")
 WEBHOOK_URL = os.getenv("NMS_WEBHOOK_URL", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
-def _is_api_request(request: Request) -> bool:
-    auth = request.headers.get("authorization", "")
+def _is_api_request(req: Request) -> bool:
+    auth = req.headers.get("authorization", "")
     return auth.startswith("Bearer ") or auth.startswith("Basic ")
 
 
@@ -728,8 +751,9 @@ async def list_alerts_ui():
 
 
 @app.get("/alerts/new")
-async def new_alert_form():
-    return HTMLResponse(_layout("New alert rule", _alert_rule_form()))
+async def new_alert_form(request: Request):
+    body = _alert_rule_form()
+    return _layout("New alert rule", body, request=request)
 
 
 @app.get("/alerts/{rule_id}/edit")
@@ -833,8 +857,9 @@ async def list_targets_ui():
 
 
 @app.get("/targets/new")
-async def new_target_form():
-    return HTMLResponse(_layout("New target", _target_form()))
+async def new_target_form(request: Request):
+    body = _target_form()
+    return _layout("New target", body, request=request)
 
 
 @app.get("/targets/{target_id}")
@@ -843,8 +868,27 @@ async def target_detail(target_id: int):
     if not target:
         return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
     metrics = store.list_metrics_for_target(target_id)
-    body = _target_form(target=target, metrics=metrics)
-    return HTMLResponse(_layout("New target", body))
+    metric_rows = "".join(
+        f"<div class='metric-row'><div><div class='metric-name'>{m.get('name') or m.get('metric_name')}</div><div class='card-meta'>{m.get('unit','')}</div></div><div class='metric-value'>{m.get('last_value', '—')}</div></div>"
+        for m in metrics
+    ) or "<div class='empty'>No metrics configured.</div>"
+    body = f"""
+      <div class='page-header'><h2>{target.get('name','')}</h2>
+        <div class='actions'>
+          <a class='button' href='/targets/{target_id}/edit'>Edit</a>
+          <button class='danger' hx-delete='/targets/{target_id}' hx-confirm='Delete {target.get('name','')}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>
+          <button hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Back</button>
+        </div>
+      </div>
+      <div class='grid'>
+        <div class='card'>
+          <div class='card-header'><div><div class='card-title'>{target.get('kind','').upper()} target</div><div class='card-meta'>{target.get('address','')}</div></div><div class='tier-badge tier-{target.get('tier','T2').lower()}'>{target.get('tier','T2')}</div></div>
+          <div class='card-header'><div class='card-title'>Metrics</div></div>
+          <div>{metric_rows}</div>
+        </div>
+      </div>
+    """
+    return HTMLResponse(_layout(target.get("name",""), body))
 
 
 @app.get("/targets/{target_id}/edit")
@@ -909,7 +953,7 @@ def _post_save_redirect(location: str) -> str:
     return f"<div hx-redirect='{location}'></div>"
 
 
-def _layout(title: str, body: str, status_code: int = 200) -> str:
+def _layout(title: str, body: str, request: Optional[Request] = None, status_code: int = 200) -> HTMLResponse:
     import secrets
     csrf = secrets.token_urlsafe(16)
     _brand = store.get_branding_settings()
@@ -917,7 +961,7 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
     _brand_css = _brand.get("brand_css_url")
     _page_title = f"{_brand_title} - {title}"
     _head = f"""<link rel='stylesheet' href='{_brand_css}' />""" if _brand_css else ""
-    return f"""<!doctype html>
+    layout = f"""<!doctype html>
 <html>
 <head>
   <meta charset='utf-8' />
@@ -970,6 +1014,9 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
   </script>
 </body>
 </html>"""
+    if request and request.headers.get("hx-request"):
+        return HTMLResponse(body, status_code=status_code)
+    return HTMLResponse(layout, status_code=status_code)
 
 
 # ---------------------------
