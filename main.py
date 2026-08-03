@@ -922,73 +922,12 @@ def _layout(title: str, body: str, status_code: int = 200) -> str:
   <script src='https://unpkg.com/htmx.org@2.0.0'></script>
   <script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
   <script src='/static/detail.js'></script>
-  <style>
-    :root {{
-      color-scheme: light dark;
-      --bg: #f6f7f9;
-      --card-bg: #ffffff;
-      --text: #1f2328;
-      --muted: #57606a;
-      --border: #d0d7de;
-      --accent: #0969da;
-      --ok: #0a0;
-      --warn: #b90;
-      --crit: #cf222e;
-      --shadow: rgba(31, 35, 40, 0.06);
-    }}
-    @media (prefers-color-scheme: dark) {{
-      :root {{
-        --bg: #0d1117;
-        --card-bg: #161b22;
-        --text: #c9d1d9;
-        --muted: #8b949e;
-        --border: #30363d;
-        --shadow: rgba(0, 0, 0, 0.4);
-      }}
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }}
-    header {{ padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap: 1rem; background: var(--card-bg); }}
-    .brand {{ font-weight: 800; letter-spacing: -0.02em; font-size: 1.1rem; }}
-    .meta {{ color: var(--muted); font-size: 0.85rem; }}
-    main {{ padding: 1.5rem; }}
-    .page-header {{ display:flex; justify-content:space-between; align-items:center; gap: 1rem; margin-bottom: 1rem; }}
-    .grid {{ display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
-    .card {{ background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; box-shadow: 0 2px 0 var(--shadow); }}
-    .card-header {{ display:flex; justify-content:space-between; align-items:center; gap: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); margin-bottom: 0.75rem; }}
-    .card-title {{ font-weight: 700; font-size: 1rem; word-break: break-word; }}
-    .tier-badge {{ font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }}
-    .tier-t1 {{ color: #1a7f37; border-color: #1a7f37; background: rgba(26,127,55,0.08); }}
-    .tier-t2 {{ color: #57606a; }}
-    .card-meta {{ color: var(--muted); font-size: 0.85rem; word-break: break-all; }}
-    .actions {{ display:flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }}
-    .field {{ display:flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.9rem; }}
-    .field label {{ font-size: 0.85rem; color: var(--muted); }}
-    .field input, .field select {{ padding: 0.55rem 0.6rem; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); }}
-    .checks {{ display: grid; gap: 0.35rem; }}
-    .card-link {{ color: var(--accent); text-decoration: none; }}
-    .metric-row {{ display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; }}
-    .metric-name {{ color: var(--muted); font-size: 0.85rem; }}
-    .metric-value {{ font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }}
-    button, .button {{ padding: 0.55rem 0.75rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer; }}
-    .empty {{ color: var(--muted); }}
-    .nav-toggle {{ display: none; }}
-    nav {{ display: block; }}
-    nav.open {{ display:block; margin-top: 0.75rem; }}
-    @media (max-width: 640px) {{
-      .nav-toggle {{ display: inline-block; }}
-      nav {{ display:none; }}
-      nav.open {{ display:block; margin-top: 0.75rem; }}
-      nav a {{ display:block; margin: 0.35rem 0; }}
-      form > div, form {{ width: 100%; }}
-      .field input, .field select {{ width: 100%; }}
-    }}
-  </style>
+  <link rel='stylesheet' href='/static/nova.css' />
 </head>
 <body>
   <header>
     <div class='topbar'>
-      <a class='brand' href='/'>{_brand_title}</a>
+      <a class='brand' href='/'><span class='brand-dot'></span>{_brand_title}</a>
       <button class='nav-toggle' id='nav-toggle' aria-expanded='false' aria-controls='main-nav'>Menu</button>
     </div>
     <nav id='main-nav'>
