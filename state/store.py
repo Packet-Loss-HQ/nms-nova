@@ -260,6 +260,20 @@ class MetricsStore:
         finally:
             con.close()
 
+    def archive_stats(self) -> dict:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            total = con.execute("SELECT COUNT(*) FROM metric_samples_archive").fetchone()[0]
+            oldest = con.execute("SELECT MIN(timestamp), MAX(timestamp) FROM metric_samples_archive").fetchone()
+            return {
+                "archive_count": total or 0,
+                "archive_oldest": oldest[0] if total else None,
+                "archive_newest": oldest[1] if total else None,
+            }
+        finally:
+            con.close()
+
     def migrate_add_alert_rule_delivery_columns(self) -> None:
         con = sqlite3.connect(self.db_path)
         try:

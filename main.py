@@ -352,6 +352,7 @@ async def health():
         con.close()
     lic = _load_license()
     active = lic.mode == "commercial" and _license_active(lic)
+    archive = store.archive_stats()
     return {
         "status": "ok",
         "version": app.version,
@@ -363,6 +364,9 @@ async def health():
             "size_bytes": db_size,
             "sample_count": sample_count,
             "target_count": target_count,
+            "archive_count": archive.get("archive_count", 0),
+            "archive_oldest": archive.get("archive_oldest"),
+            "archive_newest": archive.get("archive_newest"),
         },
     }
 
@@ -596,6 +600,7 @@ async def settings_form():
     retention = general.get("retention_days", 30)
     masked = "••••••••" if general.get("web_password_hash") else ""
     brand = store.get_branding_settings()
+    archive = store.archive_stats()
     banner = _upgrade_banner(brand.get("license_mode", "mit"))
     body = (
         f"{banner}"
@@ -620,6 +625,8 @@ async def settings_form():
         f"<div class='field'><label>Keep samples for (days)</label><input type='number' name='retention_days' value='{retention}' min='1' max='365' required></div>"
         "<button type='submit' class='primary'>Save retention</button>"
         "</form>"
+        f"<div class='metric-row'><span class='metric-name'>Archived samples</span><span class='metric-value'>{archive.get('archive_count', 0)}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Archive range</span><span class='metric-value'>{archive.get('archive_oldest') or '—'} to {archive.get('archive_newest') or '—'}</span></div>"
         "</div></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Telegram</span></div>"
         "<div class='card-body'>"
