@@ -133,9 +133,14 @@ def _basic_auth(request: Request) -> bool:
     except Exception:
         return False
     username, _, password = decoded.partition(":")
-    expected_user = os.getenv("NMS_AUTH_USER", "admin")
-    expected_pass = os.getenv("NMS_AUTH_PASS", "admin")
-    return compare_digest(username, expected_user) and compare_digest(password, expected_pass)
+    user = store.get_user(username)
+    if not user or not user.get("enabled"):
+        return False
+    import hashlib
+    if hashlib.sha256(password.encode()).hexdigest() != user.get("password_hash"):
+        return False
+    request.state.user = {"username": user.get("username"), "role": user.get("role", "viewer")}
+    return True
 
 
 def _bearer_auth(request: Request) -> bool:
@@ -147,11 +152,159 @@ def _bearer_auth(request: Request) -> bool:
     return compare_digest(auth.split(" ", 1)[1], BEARER_TOKEN)
 
 
+
+
+@app.get("/admin/users")
+async def admin_users_page(request: Request):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    users = store.list_users()
+    rows = "".join(
+        f"<tr><td>{u.get('username')}</td><td>{u.get('role')}</td><td>{'Yes' if u.get('enabled') else 'No'}</td><td>{u.get('created_at')}</td><td><form hx-post='/admin/users/{u.get('username')}/role' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'><select name='role'><option value='viewer' {'selected' if u.get('role')=='viewer' else ''}>viewer</option><option value='editor' {'selected' if u.get('role')=='editor' else ''}>editor</option><option value='admin' {'selected' if u.get('role')=='admin' else ''}>admin</option></select><button type='submit'>Set</button><input type='hidden' name='_csrf' value='__CSRF__'></form></td><td><form hx-post='/admin/users/{u.get('username')}/toggle' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'><button type='submit' class='{'danger' if u.get('enabled') else 'primary'}'>{'Disable' if u.get('enabled') else 'Enable'}</button><input type='hidden' name='_csrf' value='__CSRF__'></form></td><td><form hx-post='/admin/users/{u.get('username')}/delete' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'><button type='submit' class='danger'>Delete</button><input type='hidden' name='_csrf' value='__CSRF__'></form></td></tr>"
+        for u in users
+    ) or "<tr><td colspan='6'>No users.</td></tr>"
+    body = (
+        "<div class='page-header'><h2>Users</h2></div>"
+        "<div class='card'><div class='card-body'>"
+        "<form hx-post='/admin/users' hx-target='#main-content' hx-swap='innerHTML'>"
+        "<div class='field'><label>Username</label><input name='username' required></div>"
+        "<div class='field'><label>Password</label><input type='password' name='password' minlength='8' required></div>"
+        "<div class='field'><label>Role</label><select name='role'><option value='viewer'>viewer</option><option value='editor'>editor</option><option value='admin'>admin</option></select></div>"
+        "<button type='submit' class='primary'>Create</button><input type='hidden' name='_csrf' value='__CSRF__'>"
+        "</form>"
+        f"<table class='table'><thead><tr><th>Username</th><th>Role</th><th>Enabled</th><th>Created</th><th>Set role</th><th>Toggle</th><th>Delete</th></tr></thead><tbody>{rows}</tbody></table>"
+        "</div></div>"
+        "<p><a href='/settings'>Back to Settings</a></p>"
+    )
+    return HTMLResponse(_layout("Users", body))
+
+
+@app.post("/admin/users")
+async def create_user(request: Request):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    form = await request.form()
+    username = form.get("username", "")
+    password = form.get("password", "")
+    role = form.get("role", "viewer")
+    if not username or not password:
+        return HTMLResponse(_layout("Create user", "<div class='empty'>Username and password required.</div>"))
+    try:
+        store.create_user(username, password, role)
+    except Exception:
+        return HTMLResponse(_layout("Create user", "<div class='empty'>User already exists.</div>"))
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+@app.post("/admin/users/{username}/role")
+async def set_user_role(request: Request, username: str):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    form = await request.form()
+    role = form.get("role", "viewer")
+    store.update_user_role(username, role)
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+@app.post("/admin/users/{username}/toggle")
+async def toggle_user(request: Request, username: str):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    user = store.get_user(username)
+    if user:
+        store.set_user_enabled(username, not bool(user.get("enabled")))
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+@app.post("/admin/users/{username}/delete")
+async def delete_user(request: Request, username: str):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    store.delete_user(username)
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+
+@app.get("/admin/users")
+async def admin_users_page(request: Request):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    users = store.list_users()
+    rows = "".join(
+        f"<tr><td>{u.get('username')}</td><td>{u.get('role')}</td><td>{'Yes' if u.get('enabled') else 'No'}</td><td>{u.get('created_at')}</td><td><form hx-post='/admin/users/{u.get('username')}/role' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'><select name='role'><option value='viewer' {'selected' if u.get('role')=='viewer' else ''}>viewer</option><option value='editor' {'selected' if u.get('role')=='editor' else ''}>editor</option><option value='admin' {'selected' if u.get('role')=='admin' else ''}>admin</option></select><button type='submit'>Set</button><input type='hidden' name='_csrf' value='__CSRF__'></form></td><td><form hx-post='/admin/users/{u.get('username')}/toggle' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'><button type='submit' class='{'danger' if u.get('enabled') else 'primary'}'>{'Disable' if u.get('enabled') else 'Enable'}</button><input type='hidden' name='_csrf' value='__CSRF__'></form></td><td><form hx-post='/admin/users/{u.get('username')}/delete' hx-target='#main-content' hx-swap='innerHTML' style='display:inline'><button type='submit' class='danger'>Delete</button><input type='hidden' name='_csrf' value='__CSRF__'></form></td></tr>"
+        for u in users
+    ) or "<tr><td colspan='6'>No users.</td></tr>"
+    body = (
+        "<div class='page-header'><h2>Users</h2></div>"
+        "<div class='card'><div class='card-body'>"
+        "<form hx-post='/admin/users' hx-target='#main-content' hx-swap='innerHTML'>"
+        "<div class='field'><label>Username</label><input name='username' required></div>"
+        "<div class='field'><label>Password</label><input type='password' name='password' minlength='8' required></div>"
+        "<div class='field'><label>Role</label><select name='role'><option value='viewer'>viewer</option><option value='editor'>editor</option><option value='admin'>admin</option></select></div>"
+        "<button type='submit' class='primary'>Create</button><input type='hidden' name='_csrf' value='__CSRF__'>"
+        "</form>"
+        f"<table class='table'><thead><tr><th>Username</th><th>Role</th><th>Enabled</th><th>Created</th><th>Set role</th><th>Toggle</th><th>Delete</th></tr></thead><tbody>{rows}</tbody></table>"
+        "</div></div>"
+        "<p><a href='/settings'>Back to Settings</a></p>"
+    )
+    return HTMLResponse(_layout("Users", body))
+
+
+@app.post("/admin/users")
+async def create_user(request: Request):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    form = await request.form()
+    username = form.get("username", "")
+    password = form.get("password", "")
+    role = form.get("role", "viewer")
+    if not username or not password:
+        return HTMLResponse(_layout("Create user", "<div class='empty'>Username and password required.</div>"))
+    try:
+        store.create_user(username, password, role)
+    except Exception:
+        return HTMLResponse(_layout("Create user", "<div class='empty'>User already exists.</div>"))
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+@app.post("/admin/users/{username}/role")
+async def set_user_role(request: Request, username: str):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    form = await request.form()
+    role = form.get("role", "viewer")
+    store.update_user_role(username, role)
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+@app.post("/admin/users/{username}/toggle")
+async def toggle_user(request: Request, username: str):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    user = store.get_user(username)
+    if user:
+        store.set_user_enabled(username, not bool(user.get("enabled")))
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
+
+@app.post("/admin/users/{username}/delete")
+async def delete_user(request: Request, username: str):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    store.delete_user(username)
+    return HTMLResponse(_post_save_redirect("/admin/users"))
+
 # M13: scoped API token auth
 try:
     api_tokens = store.list_api_tokens()
 except Exception:
     api_tokens = _api_tokens_cache
+
+
+def _require_admin(request: Request):
+    if request.state.user.get("role") != "admin":
+        return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
+    return None
 
 
 @app.middleware("http")
@@ -648,6 +801,7 @@ async def settings_form():
         f"<div class='metric-row'><span class='metric-name'>Commercial features</span><span class='metric-value'>{'Enabled' if brand.get('license_mode') == 'commercial' else 'Disabled'}</span></div>"
         "<a class='button primary' href='/upgrade'>Upgrade</a>"
         "<a class='button' href='/license'>Manage license</a>"
+        "<a class='button' href='/admin/users'>Users</a>"
         "<a class='button' href='/settings/delivery-log'>Delivery log</a>"
         "</div></div>"
         "</div>"
