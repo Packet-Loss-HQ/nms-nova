@@ -1507,18 +1507,6 @@ async def activate_license(request: Request):
     return HTMLResponse(_layout("License activated", body))
 
 
-@app.get("/license/check")
-def license_check():
-    lic = _load_license()
-    features = nms_license.commercial_features_summary(lic)
-    return JSONResponse({
-        "mode": lic.mode,
-        "commercial_features_enabled": lic.mode == "commercial",
-        "features": features,
-        "support_contact": "sales@packet-loss.net" if lic.mode == "commercial" else None,
-    })
-
-
 @app.get("/license")
 async def license_page():
     lic = _load_license()
@@ -1558,11 +1546,16 @@ async def activate_license(request: Request):
     </div>
     """
     return HTMLResponse(_layout("License activated", body))
+
+
+@app.get("/license/check")
+def license_check():
     lic = _load_license()
+    features = nms_license.commercial_features_summary(lic)
     return JSONResponse({
         "mode": lic.mode,
         "commercial_features_enabled": lic.mode == "commercial",
-        "features": nms_license.commercial_features_summary(lic),
+        "features": features,
         "support_contact": "sales@packet-loss.net" if lic.mode == "commercial" else None,
     })
 
