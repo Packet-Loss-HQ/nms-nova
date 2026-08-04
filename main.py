@@ -1166,6 +1166,10 @@ def _load_license() -> nms_license.License:
     mode = brand.get("license_mode", "mit")
     features = set(nms_license.COMMERCIAL_FEATURES) if mode == "commercial" else set(nms_license.MIT_FEATURES)
     return nms_license.License(mode=mode, key=None, features=features)
+    brand = store.get_branding_settings()
+    mode = brand.get("license_mode", "mit")
+    features = set(nms_license.COMMERCIAL_FEATURES) if mode == "commercial" else set(nms_license.MIT_FEATURES)
+    return nms_license.License(mode=mode, key=None, features=features)
 
 
 def _upgrade_banner(license_mode: str = "mit") -> str:
@@ -1481,6 +1485,10 @@ async def license_page():
       <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='primary'>Activate</button>
     </form>
+    <form hx-post='/license/deactivate' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:12px'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
+      <button type='submit' class='danger'>Deactivate license</button>
+    </form>
     """
     return HTMLResponse(_layout("License", body))
 
@@ -1522,6 +1530,10 @@ async def license_page():
       <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='primary'>Activate</button>
     </form>
+    <form hx-post='/license/deactivate' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:12px'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
+      <button type='submit' class='danger'>Deactivate license</button>
+    </form>
     """
     return HTMLResponse(_layout("License", body))
 
@@ -1546,6 +1558,22 @@ async def activate_license(request: Request):
     </div>
     """
     return HTMLResponse(_layout("License activated", body))
+
+
+@app.post("/license/deactivate")
+async def deactivate_license(request: Request):
+    form = await request.form()
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    store.save_branding_settings({"license_mode": "mit"})
+    store.save_settings(license_mode="mit", license_key=None)
+    body = """
+    <div class='empty'>
+      <p>License deactivated. Reverted to MIT mode.</p>
+      <p><a href='/settings'>Back to Settings</a></p>
+    </div>
+    """
+    return HTMLResponse(_layout("License deactivated", body))
 
 
 @app.get("/license/check")
