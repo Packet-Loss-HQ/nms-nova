@@ -690,21 +690,13 @@ def _is_public(path: str) -> bool:
 async def web_auth_middleware(request: Request, call_next):
     path = request.url.path
     if not _is_public(path):
+        if request.headers.get("authorization", "").startswith("Basic "):
+            if _basic_auth(request):
+                return await call_next(request)
+            return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": "Basic"})
         settings = store.get_settings()
         if settings.get("web_auth_enabled") and settings.get("web_password_hash"):
-            auth = request.headers.get("authorization", "")
-            try:
-                decoded = __import__("base64").b64decode(auth.split(" ", 1)[1]).decode()
-                username, password = decoded.split(":", 1)
-            except Exception:
-                username = password = None
-            user = store.get_user(username)
-            if user and user.get("enabled") and __import__("hashlib").sha256(password.encode()).hexdigest() == user.get("password_hash"):
-                request.state.user = {"username": user.get("username"), "role": user.get("role", "viewer")}
-            elif username != "nms-nova" or __import__("hashlib").sha256(password.encode()).hexdigest() != settings["web_password_hash"]:
-                return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": "Basic"})
-            else:
-                request.state.user = {"username": "nms-nova", "role": "admin"}
+            return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": "Basic"})
     return await call_next(request)
 
 
