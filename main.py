@@ -637,6 +637,7 @@ async def settings_form():
         f"<div class='metric-row'><span class='metric-name'>Mode</span><span class='metric-value'>{brand.get('license_mode','mit').upper()}</span></div>"
         f"<div class='metric-row'><span class='metric-name'>Commercial features</span><span class='metric-value'>{'Enabled' if brand.get('license_mode') == 'commercial' else 'Disabled'}</span></div>"
         "<a class='button primary' href='/upgrade'>Upgrade</a>"
+        "<a class='button' href='/license'>Manage license</a>"
         "</div></div>"
         "</div>"
     )
@@ -1152,6 +1153,22 @@ def _post_save_redirect(location: str) -> str:
     return f"<div hx-redirect='{location}'></div>"
 
 
+def _validate_license_key(key: str) -> bool:
+    key = (key or "").strip()
+    if not key:
+        return False
+    # Simple shared-secret format for initial release; will evolve to signed tokens in M3.
+    return key.startswith("NMS-NOVA-") and len(key) >= 16
+
+
+def _load_license() -> nms_license.License:
+    settings = store.get_settings()
+    mode = settings.get("license_mode", "mit")
+    key = settings.get("license_key")
+    features = set(nms_license.COMMERCIAL_FEATURES) if mode == "commercial" else set(nms_license.MIT_FEATURES)
+    return nms_license.License(mode=mode, key=key, features=features)
+
+
 def _upgrade_banner(license_mode: str = "mit") -> str:
     if license_mode != "commercial":
         return """<div class="upgrade-banner"><strong>NMS-Nova Commercial</strong> unlocks extended retention, SNMP, escalation, white-label, RBAC, and more. <a href="/upgrade">Learn more</a>.</div>"""
@@ -1448,18 +1465,102 @@ async def preview_branding(request: Request):
 
 
 # M15+: commercial license feature gates
-def _load_license() -> nms_license.License:
-    settings = store.get_branding_settings()
-    return nms_license.License(
-        mode=settings.get("license_mode", "mit"),
-        features=set(settings.get("license_features", "").split(",")) if settings.get("license_features") else set(),
-    )
+# _load_license() already defined above with settings-table source of truth
+
+@app.get("/license")
+async def license_page():
+    lic = _load_license()
+    status = "active" if lic.mode == "commercial" else "inactive"
+    body = f"""
+    <div class='page-header'><h2>License</h2></div>
+    <div class='empty'>
+      <p>Current mode: <strong>{lic.mode.upper()}</strong></p>
+      <p>Status: <strong>{status}</strong></p>
+    </div>
+    <form hx-post='/license/activate' hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>License key</label><input name='license_key' placeholder='Paste commercial license key'></div>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
+      <button type='submit' class='primary'>Activate</button>
+    </form>
+    """
+    return HTMLResponse(_layout("License", body))
+
+
+@app.post("/license/activate")
+async def activate_license(request: Request):
+    form = await request.form()
+    key = (form.get("license_key") or "").strip()
+    if not key:
+        return HTMLResponse("<div class='empty'>License key is required.</div>", status_code=400)
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    valid = _validate_license_key(key)
+    if not valid:
+        return HTMLResponse("<div class='empty'>Invalid license key.</div>", status_code=400)
+    lic = nms_license.License(mode="commercial", key=key, features=set(nms_license.COMMERCIAL_FEATURES))
+    store.save_branding_settings({"license_mode": "commercial"})
+    store.save_settings(license_key=key, license_mode="commercial")
+    body = """
+    <div class='empty'>
+      <p>License activated.</p>
+      <p><a href='/settings'>Back to Settings</a></p>
+    </div>
+    """
+    return HTMLResponse(_layout("License activated", body))
 
 
 @app.get("/license/check")
 def license_check():
-    # read-only; actual activation will be POST /license/activate in M3
-    pass
+    lic = _load_license()
+    features = nms_license.commercial_features_summary(lic)
+    return JSONResponse({
+        "mode": lic.mode,
+        "commercial_features_enabled": lic.mode == "commercial",
+        "features": features,
+        "support_contact": "sales@packet-loss.net" if lic.mode == "commercial" else None,
+    })
+
+
+@app.get("/license")
+async def license_page():
+    lic = _load_license()
+    status = "active" if lic.mode == "commercial" else "inactive"
+    body = f"""
+    <div class='page-header'><h2>License</h2></div>
+    <div class='empty'>
+      <p>Current mode: <strong>{lic.mode.upper()}</strong></p>
+      <p>Status: <strong>{status}</strong></p>
+    </div>
+    <form hx-post='/license/activate' hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>License key</label><input name='license_key' placeholder='Paste commercial license key'></div>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
+      <button type='submit' class='primary'>Activate</button>
+    </form>
+    """
+    return HTMLResponse(_layout("License", body))
+
+
+@app.post("/license/activate")
+async def activate_license(request: Request):
+    form = await request.form()
+    key = (form.get("license_key") or "").strip()
+    if not key:
+        return HTMLResponse("<div class='empty'>License key is required.</div>", status_code=400)
+    if form.get("_csrf") != request.cookies.get("_csrf"):
+        return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
+    valid = _validate_license_key(key)
+    if not valid:
+        return HTMLResponse("<div class='empty'>Invalid license key.</div>", status_code=400)
+    lic = nms_license.License(mode="commercial", key=key, features=set(nms_license.COMMERCIAL_FEATURES))
+    store.save_branding_settings({"license_mode": "commercial"})
+    store.save_settings(license_key=key, license_mode="commercial")
+    body = """
+    <div class='empty'>
+      <p>License activated.</p>
+      <p><a href='/settings'>Back to Settings</a></p>
+    </div>
+    """
+    return HTMLResponse(_layout("License activated", body))
     lic = _load_license()
     return JSONResponse({
         "mode": lic.mode,

@@ -155,10 +155,21 @@ class MetricsStore:
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     retention_days INTEGER NOT NULL DEFAULT 30,
                     web_password_hash TEXT,
-                    web_auth_enabled BOOLEAN NOT NULL DEFAULT 0
+                    web_auth_enabled BOOLEAN NOT NULL DEFAULT 0,
+                    license_mode TEXT NOT NULL DEFAULT 'mit',
+                    license_key TEXT
                 )
                 """
             )
+            # Migration for existing DBs
+            try:
+                con.execute("ALTER TABLE settings ADD COLUMN license_mode TEXT NOT NULL DEFAULT 'mit'")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE settings ADD COLUMN license_key TEXT")
+            except Exception:
+                pass
             con.commit()
         finally:
             con.close()
@@ -346,12 +357,12 @@ class MetricsStore:
         con.row_factory = sqlite3.Row
         try:
             row = con.execute("SELECT * FROM settings WHERE id=1").fetchone()
-            return dict(row) if row else {"retention_days": 30, "web_auth_enabled": 0, "web_password_hash": None}
+            return dict(row) if row else {"retention_days": 30, "web_auth_enabled": 0, "web_password_hash": None, "license_mode": "mit", "license_key": None}
         finally:
             con.close()
 
     def save_settings(self, **fields: Any) -> None:
-        allowed = {"retention_days", "web_password_hash", "web_auth_enabled"}
+        allowed = {"retention_days", "web_password_hash", "web_auth_enabled", "license_mode", "license_key"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return
