@@ -350,9 +350,12 @@ async def health():
         target_count = con.execute("SELECT count(*) FROM targets").fetchone()[0]
     finally:
         con.close()
+    lic = _load_license()
+    active = lic.mode == "commercial" and _license_active(lic)
     return {
         "status": "ok",
         "version": app.version,
+        "license": {"mode": lic.mode, "active": active},
         "targets": targets,
         "alerts": alerts,
         "db": {
