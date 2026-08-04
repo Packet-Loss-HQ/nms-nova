@@ -2195,6 +2195,33 @@ def api_list_anomalies(request: Request):
     return JSONResponse([dict(r) for r in rows])
 
 
+@app.get("/baselines")
+async def baselines_page(request: Request):
+    _require_feature("anomaly_detection")
+    con = __import__("sqlite3").connect(store.db_path)
+    con.row_factory = __import__("sqlite3").Row
+    try:
+        rows = con.execute("SELECT b.*, t.name AS target_name, d.name AS metric_name FROM metric_baselines b JOIN targets t ON t.id = b.target_id JOIN metric_definitions d ON d.id = b.definition_id ORDER BY b.updated_at DESC").fetchall()
+        items = []
+        for row in rows:
+            r = dict(row)
+            items.append(
+                f"<tr><td>{r.get('target_id')}</td><td>{r.get('target_name')}</td><td>{r.get('metric_name')}</td>"
+                f"<td>{r.get('mean', 0.0):.4f}</td><td>{r.get('stddev', 0.0):.4f}</td><td>{r.get('sample_count', 0)}</td>"
+                f"<td>{r.get('updated_at')}</td></tr>"
+            )
+        items = "".join(items) or "<tr><td colspan='6'>No baselines yet.</td></tr>"
+        body = (
+            "<div class='page-header'><h2>Baselines</h2></div>"
+            "<div class='card'><div class='card-body'>"
+            "<table class='table'><thead><tr><th>Target ID</th><th>Target</th><th>Metric</th><th>Mean</th><th>Stddev</th><th>Samples</th><th>Updated</th></tr></thead><tbody>"
+            f"{items}</tbody></table></div></div>"
+        )
+        return HTMLResponse(_layout("Baselines", body))
+    finally:
+        con.close()
+
+
 @api_router.get("/baselines", include_in_schema=False)
 def api_list_baselines(request: Request):
     _require_feature("anomaly_detection")
