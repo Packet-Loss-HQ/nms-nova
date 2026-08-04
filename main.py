@@ -698,8 +698,13 @@ async def web_auth_middleware(request: Request, call_next):
                 username, password = decoded.split(":", 1)
             except Exception:
                 username = password = None
-            if username != "nms-nova" or __import__("hashlib").sha256(password.encode()).hexdigest() != settings["web_password_hash"]:
+            user = store.get_user(username)
+            if not user or not user.get("enabled"):
                 return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": "Basic"})
+            import hashlib
+            if hashlib.sha256(password.encode()).hexdigest() != settings["web_password_hash"]:
+                return Response("Unauthorized", status_code=401, headers={"WWW-Authenticate": "Basic"})
+            request.state.user = {"username": user.get("username"), "role": user.get("role", "viewer")}
     return await call_next(request)
 
 
