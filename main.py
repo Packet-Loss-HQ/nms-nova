@@ -1265,6 +1265,7 @@ def api_list_alert_rules():
 
 @api_router.get("/alerts/delivery")
 def api_get_delivery_settings():
+    _require_feature("multichannel_delivery")
     settings = store.get_delivery_settings()
     return JSONResponse({
         "telegram_enabled": bool(settings.get("telegram_enabled")),
@@ -1277,12 +1278,14 @@ def api_get_delivery_settings():
 
 @api_router.get("/alerts/delivery/log")
 def api_delivery_log(limit: int = 100):
+    _require_feature("multichannel_delivery")
     rows = store.recent_delivery_log(limit)
     return JSONResponse([dict(r) for r in rows])
 
 
 @api_router.post("/alerts/escalate")
 def api_execute_escalations(request: Request):
+    _require_feature("alert_escalation")
     scopes = getattr(request.state, "api_scopes", [])
     if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
@@ -1304,12 +1307,14 @@ def api_execute_escalations(request: Request):
 
 @api_router.get("/alerts/pending-escalations")
 def api_pending_escalations():
+    _require_feature("alert_escalation")
     rows = store.pending_escalations()
     return JSONResponse([dict(r) for r in rows])
 
 
 @api_router.get("/admin/tokens")
 def api_list_tokens(request: Request):
+    _require_feature("commercial_license")
     scopes = getattr(request.state, "api_scopes", [])
     if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
@@ -1319,6 +1324,7 @@ def api_list_tokens(request: Request):
 
 @api_router.delete("/admin/tokens/{token_id}")
 def api_revoke_token(request: Request, token_id: int):
+    _require_feature("commercial_license")
     scopes = getattr(request.state, "api_scopes", [])
     if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
@@ -1328,6 +1334,7 @@ def api_revoke_token(request: Request, token_id: int):
 
 @api_router.post("/admin/tokens")
 def api_create_token(request: Request, token: str = "", scope: str = "read"):
+    _require_feature("commercial_license")
     scopes = getattr(request.state, "api_scopes", [])
     if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
@@ -1338,6 +1345,7 @@ def api_create_token(request: Request, token: str = "", scope: str = "read"):
 
 @api_router.get("/branding")
 def api_get_branding():
+    _require_feature("white_label")
     settings = store.get_branding_settings()
     return JSONResponse({
         "product_name": settings.get("product_name", "NMS-Nova"),
@@ -1350,6 +1358,7 @@ def api_get_branding():
 
 @api_router.post("/branding")
 def api_save_branding(request: Request, body: dict = {}):
+    _require_feature("white_label")
     scopes = getattr(request.state, "api_scopes", [])
     if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
         return JSONResponse({"detail": "forbidden"}, status_code=403)
@@ -1435,6 +1444,8 @@ def _load_license() -> nms_license.License:
 
 @app.get("/license/check")
 def license_check():
+    # read-only; actual activation will be POST /license/activate in M3
+    pass
     lic = _load_license()
     return JSONResponse({
         "mode": lic.mode,
@@ -1468,3 +1479,30 @@ async def upgrade_page():
     return HTMLResponse(_layout("Upgrade", body))
 
 app.include_router(api_router)
+
+
+# Planned commercial-only route stubs
+@app.get("/settings/rbac")
+async def rbac_form():
+    _require_feature("rbac")
+    return HTMLResponse("<div class='empty'>RBAC is a commercial feature.</div>")
+
+@app.post("/settings/rbac")
+async def rbac_save():
+    _require_feature("rbac")
+    return HTMLResponse(_post_save_redirect("/settings/rbac"))
+
+@app.get("/settings/backup")
+async def backup_form():
+    _require_feature("backup_restore")
+    return HTMLResponse("<div class='empty'>Backup/restore is a commercial feature.</div>")
+
+@app.post("/settings/backup")
+async def backup_run():
+    _require_feature("backup_restore")
+    return HTMLResponse(_post_save_redirect("/settings/backup"))
+
+@app.get("/dashboards")
+async def custom_dashboards():
+    _require_feature("custom_dashboards")
+    return HTMLResponse("<div class='empty'>Custom dashboards are a commercial feature.</div>")
