@@ -631,7 +631,7 @@ async def settings_form():
         f"<div class='field'><label>Bot token</label><input name='telegram_bot_token' value='{delivery.get('telegram_bot_token','')}'></div>"
         f"<div class='field'><label>Chat ID</label><input name='telegram_chat_id' value='{delivery.get('telegram_chat_id','')}'></div>"
         "<button type='submit' class='primary'>Save</button>"
-        "<input type='hidden' name='_csrf' value='{csrf}'>"
+        "<input type='hidden' name='_csrf' value='{{csrf}}'>"
         "</form></div></div>"
         "<div id='test-result'></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
@@ -1237,7 +1237,7 @@ def _layout(title: str, body: str) -> str:
         if (active) a.classList.add("active");
       }});
       if (!document.cookie.includes("_csrf=")) {{
-        document.cookie = "_csrf={csrf}; Path=/; SameSite=Strict";
+        document.cookie = "_csrf={{csrf}}; Path=/; SameSite=Strict";
       }}
     }})();
     (function(){{
@@ -1433,7 +1433,7 @@ async def branding_form():
         <option value='commercial' {'selected' if settings.get('license_mode')=='commercial' else ''}>Commercial</option>
       </select></div>
       <div class='field'><label><input type='checkbox' name='hide_powered_by' {'checked' if settings.get('hide_powered_by') else ''} {'disabled' if not nms_license.is_enabled(_load_license(), 'white_label') else ''}> Hide powered-by line</label></div>
-      <input type='hidden' name='_csrf' value='{csrf}'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit'>Save branding</button>
     </form>
     """
@@ -1496,11 +1496,11 @@ async def license_page():
     </div>
     <form hx-post='/license/activate' hx-target='#main-content' hx-swap='innerHTML'>
       <div class='field'><label>License key</label><input name='license_key' placeholder='Paste commercial license key'></div>
-      <input type='hidden' name='_csrf' value='{csrf}'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='primary'>Activate</button>
     </form>
     <form hx-post='/license/deactivate' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:12px'>
-      <input type='hidden' name='_csrf' value='{csrf}'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='danger'>Deactivate license</button>
     </form>
     """
@@ -1551,15 +1551,15 @@ async def license_page():
     </table>
     <form hx-post='/license/activate' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:16px'>
       <div class='field'><label>License key</label><input name='license_key' placeholder='Paste commercial license key'></div>
-      <input type='hidden' name='_csrf' value='{csrf}'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='primary'>Activate</button>
     </form>
     <form hx-post='/license/trial' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:12px'>
-      <input type='hidden' name='_csrf' value='{csrf}'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='button'>Start 14-day trial</button>
     </form>
     <form hx-post='/license/deactivate' hx-target='#main-content' hx-swap='innerHTML' style='margin-top:12px'>
-      <input type='hidden' name='_csrf' value='{csrf}'>
+      <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit' class='danger'>Deactivate license</button>
     </form>
     """
