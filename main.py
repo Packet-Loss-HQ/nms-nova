@@ -163,7 +163,7 @@ def _bearer_auth(request: Request) -> bool:
 
 @app.get("/admin/users")
 async def admin_users_page(request: Request):
-    if request.state.user.get("role") != "admin":
+    if not hasattr(request.state, "user") or request.state.user.get("role") != "admin":
         return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
     users = store.list_users()
     rows = "".join(
@@ -234,7 +234,7 @@ async def delete_user(request: Request, username: str):
 
 @app.get("/admin/users")
 async def admin_users_page(request: Request):
-    if request.state.user.get("role") != "admin":
+    if not hasattr(request.state, "user") or request.state.user.get("role") != "admin":
         return HTMLResponse(_layout("Forbidden", "<div class='empty'>Forbidden</div>"), status_code=403)
     users = store.list_users()
     rows = "".join(
