@@ -26,6 +26,8 @@ from probes.definitions import (
     probe_load_avg,
     probe_memory_used_percent,
     probe_service_up,
+    probe_snmp_sys_descr,
+    probe_snmp_sys_up_time,
 )
 from probes.runner import ProbeRunner
 from state.store import MetricsStore
@@ -37,6 +39,8 @@ PROBE_MAP = {
     "service_up": probe_service_up,
     "load_avg_1m": probe_load_avg,
     "interface_total_kbps": probe_interface_stats,
+    "snmp_sys_descr": probe_snmp_sys_descr,
+    "snmp_sys_up_time": probe_snmp_sys_up_time,
 }
 
 BASE_DIR = Path(__file__).resolve().parent.parent

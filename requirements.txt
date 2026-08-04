@@ -4,3 +4,5 @@ pydantic==2.7.0
 python-multipart==0.0.9
 pyyaml==6.0.1
 httpx==0.27.0
+
+# Optional SNMP support: pysnmp>=1.5,<2

@@ -15,10 +15,10 @@ NMS-Nova is a lightweight, self-hosted network monitoring system built for homel
 - Delivers alerts via Telegram and generic webhooks.
 
 ## What it does not do
-- No SNMP in v1.
+- Optional SNMP support via `pysnmp` (BSD-2-Clause) in licensed builds; MIT core remains without it.
 - No cloud dependency.
 - No external telemetry or usage reporting.
-- No enterprise RBAC, multi-tenant isolation, or compliance modules.
+- Optional commercial modules: SNMP probes, RBAC, extended retention, multi-channel delivery, anomaly baseline, and white-label branding removal.
 
 ## Commercial readiness
 

@@ -32,6 +32,9 @@ cd "${DEST}"
 # Create venv and install deps
 python3 -m venv .venv
 .venv/bin/pip install --no-cache-dir -r requirements.txt
+if [ "${NMS_SNMP:-0}" = "1" ]; then
+  .venv/bin/pip install --no-cache-dir "pysnmp>=1.5,<2"
+fi
 
 # First-run setup
 if [ ! -f targets.yaml ]; then

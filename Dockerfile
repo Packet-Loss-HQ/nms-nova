@@ -6,7 +6,8 @@ RUN apt-get update \
 
 WORKDIR /opt/nms-nova
 COPY requirements.txt requirements-dev.txt ./ 
-RUN pip install --no-cache-dir -r requirements.txt
+ARG INSTALL_SNMP=0
+RUN if [ "$INSTALL_SNMP" = "1" ]; then pip install --no-cache-dir -r requirements.txt "pysnmp>=1.5,<2"; else pip install --no-cache-dir -r requirements.txt; fi
 
 COPY main.py ./main.py
 COPY state ./state

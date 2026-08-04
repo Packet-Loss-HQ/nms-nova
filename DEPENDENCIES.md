@@ -25,6 +25,11 @@
 | HTMX | 2.0.0 | MIT | Interactivity |
 | Chart.js | 4.4.0 | MIT | Trend charts |
 
+## Optional dependencies
+| Component | Version | License | Purpose |
+|-----------|---------|---------|---------|
+| pysnmp | 1.5+ | BSD-2-Clause | Optional SNMP v2c/v3 probing |
+
 ## License policy
-Only permissive licenses are permitted: MIT, Apache 2.0, PSF, Public Domain, BSD-3-Clause.
+Only permissive licenses are permitted: MIT, Apache 2.0, PSF, Public Domain, BSD-2-Clause, BSD-3-Clause.
 GPL/AGPL and copyleft licenses are forbidden in the application stack.

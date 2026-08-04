@@ -52,6 +52,24 @@ class ProbeRunner:
             raise RuntimeError(f"probe failed: {exc.output.decode('utf-8', errors='replace').strip()}")
 
 
+def _snmp_run(address: str, oid: str, *, community: str = "public", snmp_version: str = "2c", v3_user: Optional[str] = None, v3_auth: Optional[str] = None, v3_priv: Optional[str] = None, v3_auth_key: Optional[str] = None, v3_priv_key: Optional[str] = None, timeout_sec: int = 10) -> str:
+    from probes.definitions import _require_pysnmp, _snmp_get
+    _require_pysnmp()
+    version = 2 if snmp_version == "2c" else 3
+    return _snmp_get(
+        address,
+        oid,
+        community=community,
+        version=version,
+        v3_user=v3_user,
+        v3_auth=v3_auth,
+        v3_priv=v3_priv,
+        v3_auth_key=v3_auth_key,
+        v3_priv_key=v3_priv_key,
+        timeout=timeout_sec,
+    )
+
+
 def _remote_python(runner: ProbeRunner, target_kind: str, target_address: str, code: str) -> str:
     payload = base64.b64encode(code.encode("utf-8")).decode("ascii")
     cmd = f"echo {payload} | base64 -d | python3"

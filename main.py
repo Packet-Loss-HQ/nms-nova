@@ -702,7 +702,7 @@ async def web_auth_middleware(request: Request, call_next):
 
 
 
-TARGET_KINDS = ("lxc", "ssh", "docker")
+TARGET_KINDS = ("lxc", "ssh", "docker", "snmp")
 METRIC_OPTIONS = [
     ("cpu_usage_percent", "CPU %"),
     ("memory_used_percent", "Memory %"),
@@ -710,6 +710,8 @@ METRIC_OPTIONS = [
     ("service_up", "Service up"),
     ("load_avg_1m", "Load avg 1m"),
     ("interface_total_kbps", "Interface kbps"),
+    ("snmp_sys_descr", "SNMP sysDescr"),
+    ("snmp_sys_up_time", "SNMP sysUpTime"),
 ]
 
 
@@ -728,6 +730,31 @@ def _target_form(target: dict | None = None, metrics: list[dict] | None = None) 
     kind_opts = "".join("<option value='%s' %s>%s</option>" % (k, "selected" if kind == k else "", k) for k in TARGET_KINDS)
     probe_opts = "".join("<option value='%s' %s>%s</option>" % (k, "selected" if probe_type == k else "", k) for k in TARGET_KINDS)
     tier_opts = "".join("<option value='%s' %s>%s</option>" % (t, "selected" if tier == t else "", t) for t in ("T1", "T2"))
+    snmp_block = ""
+    if kind == "snmp":
+        snmp_block = (
+            "<div class='field'><label>SNMP version</label>"
+            "<select name='snmp_version'><option value='2c' %s>2c</option><option value='3' %s>3</option></select></div>"
+            "<div class='field'><label>Community</label><input name='snmp_community' value='%s'></div>"
+            "<div class='field'><label>v3 user</label><input name='snmp_v3_user' value='%s'></div>"
+            "<div class='field'><label>v3 auth</label><select name='snmp_v3_auth'><option value='' %s></option><option value='md5' %s>md5</option><option value='sha' %s>sha</option></select></div>"
+            "<div class='field'><label>v3 priv</label><select name='snmp_v3_priv'><option value='' %s></option><option value='des' %s>des</option><option value='aes' %s>aes</option></select></div>"
+            "<div class='field'><label>v3 auth key</label><input name='snmp_v3_auth_key' value='%s' type='password'></div>"
+            "<div class='field'><label>v3 priv key</label><input name='snmp_v3_priv_key' value='%s' type='password'></div>"
+        ) % (
+            "selected" if target and target.get("snmp_version", "2c") == "2c" else "",
+            "selected" if target and target.get("snmp_version") == "3" else "",
+            target.get("snmp_community", "public") if target else "public",
+            target.get("snmp_v3_user", "") if target else "",
+            "selected" if target and target.get("snmp_v3_auth", "") == "" else "",
+            "selected" if target and target.get("snmp_v3_auth", "") == "md5" else "",
+            "selected" if target and target.get("snmp_v3_auth", "") == "sha" else "",
+            "selected" if target and target.get("snmp_v3_priv", "") == "" else "",
+            "selected" if target and target.get("snmp_v3_priv", "") == "des" else "",
+            "selected" if target and target.get("snmp_v3_priv", "") == "aes" else "",
+            target.get("snmp_v3_auth_key", "") if target else "",
+            target.get("snmp_v3_priv_key", "") if target else "",
+        )
     if target:
         action = "/targets/%s" % target["id"]
         method = 'hx-put="true"'
@@ -742,10 +769,11 @@ def _target_form(target: dict | None = None, metrics: list[dict] | None = None) 
       <div class='field'><label>Probe type</label><select name='probe_type'>%s</select></div>
       <div class='field'><label>Tier</label><select name='tier'>%s</select></div>
       <div class='field'><label>SSH key path</label><input name='ssh_key' value='%s'></div>
+      %s
       <div class='field'><label>Metrics</label><div class='checks'>%s</div></div>
       <button type='submit' class='primary'>Save</button> <button type='button' hx-get='/targets' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
     </form>
-    """ % (action, method, name, kind_opts, address, probe_opts, tier_opts, ssh_key, metric_checks)
+    """ % (action, method, name, kind_opts, address, probe_opts, tier_opts, ssh_key, snmp_block, metric_checks)
 
 
 
@@ -1233,17 +1261,39 @@ async def edit_target_form(target_id: int):
 @app.post("/targets")
 async def create_target(request: Request):
     form = await request.form()
+    kind = form.get("kind", "lxc")
     target_id = store.create_target(
         name=form.get("name", ""),
-        kind=form.get("kind", "lxc"),
+        kind=kind,
         address=form.get("address", ""),
-        probe_type=form.get("probe_type", form.get("kind", "lxc")),
+        probe_type=form.get("probe_type", kind),
         tier=form.get("tier", "T2"),
         ssh_key=form.get("ssh_key"),
     )
+    if kind == "snmp":
+        store.update_target(
+            target_id,
+            snmp_community=form.get("snmp_community"),
+            snmp_v3_user=form.get("snmp_v3_user"),
+            snmp_v3_auth=form.get("snmp_v3_auth"),
+            snmp_v3_priv=form.get("snmp_v3_priv"),
+            snmp_v3_auth_key=form.get("snmp_v3_auth_key"),
+            snmp_v3_priv_key=form.get("snmp_v3_priv_key"),
+        )
     metrics = form.getlist("metrics")
     for name in metrics:
-        store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60)
+        params = None
+        if kind == "snmp":
+            params = {
+                "snmp_community": form.get("snmp_community") or "public",
+                "snmp_version": form.get("snmp_version", "2c"),
+                "snmp_v3_user": form.get("snmp_v3_user"),
+                "snmp_v3_auth": form.get("snmp_v3_auth"),
+                "snmp_v3_priv": form.get("snmp_v3_priv"),
+                "snmp_v3_auth_key": form.get("snmp_v3_auth_key"),
+                "snmp_v3_priv_key": form.get("snmp_v3_priv_key"),
+            }
+        store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60, params=params)
     return HTMLResponse(_post_save_redirect(f"/targets/{target_id}/edit"))
 
 
@@ -1253,15 +1303,26 @@ async def update_target(target_id: int, request: Request):
     if not target:
         return HTMLResponse("<div class='empty'>Not found</div>", status_code=404)
     form = await request.form()
+    kind = form.get("kind", target["kind"])
     store.update_target(
         target_id,
         name=form.get("name", target["name"]),
-        kind=form.get("kind", target["kind"]),
+        kind=kind,
         address=form.get("address", target["address"]),
-        probe_type=form.get("probe_type", form.get("kind")),
+        probe_type=form.get("probe_type", kind),
         tier=form.get("tier", target.get("tier", "T2")),
         ssh_key=form.get("ssh_key", target.get("ssh_key")),
     )
+    if kind == "snmp":
+        store.update_target(
+            target_id,
+            snmp_community=form.get("snmp_community"),
+            snmp_v3_user=form.get("snmp_v3_user"),
+            snmp_v3_auth=form.get("snmp_v3_auth"),
+            snmp_v3_priv=form.get("snmp_v3_priv"),
+            snmp_v3_auth_key=form.get("snmp_v3_auth_key"),
+            snmp_v3_priv_key=form.get("snmp_v3_priv_key"),
+        )
     existing = {m["name"] for m in store.list_metrics_for_target(target_id)}
     requested = set(form.getlist("metrics"))
     for name in existing - requested:
@@ -1269,7 +1330,18 @@ async def update_target(target_id: int, request: Request):
             if m["name"] == name:
                 store.delete_metric(m["id"])
     for name in requested - existing:
-        store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60)
+        params = None
+        if kind == "snmp":
+            params = {
+                "snmp_community": form.get("snmp_community") or "public",
+                "snmp_version": form.get("snmp_version", "2c"),
+                "snmp_v3_user": form.get("snmp_v3_user"),
+                "snmp_v3_auth": form.get("snmp_v3_auth"),
+                "snmp_v3_priv": form.get("snmp_v3_priv"),
+                "snmp_v3_auth_key": form.get("snmp_v3_auth_key"),
+                "snmp_v3_priv_key": form.get("snmp_v3_priv_key"),
+            }
+        store.create_metric(target_id, name=name, unit=None, poll_interval_sec=60, params=params)
     return HTMLResponse(_post_save_redirect(f"/targets/{target_id}/edit"))
 
 

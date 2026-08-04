@@ -88,6 +88,30 @@ class MetricsStore:
                 con.execute("ALTER TABLE targets ADD COLUMN ssh_key TEXT")
             except Exception:
                 pass
+            try:
+                con.execute("ALTER TABLE targets ADD COLUMN snmp_community TEXT")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE targets ADD COLUMN snmp_v3_user TEXT")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE targets ADD COLUMN snmp_v3_auth TEXT")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE targets ADD COLUMN snmp_v3_priv TEXT")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE targets ADD COLUMN snmp_v3_auth_key TEXT")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE targets ADD COLUMN snmp_v3_priv_key TEXT")
+            except Exception:
+                pass
             con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS api_tokens (
@@ -392,7 +416,20 @@ class MetricsStore:
             con.close()
 
     def update_target(self, target_id: int, **fields: Any) -> None:
-        allowed = {"name", "kind", "address", "probe_type", "tier", "enabled"}
+        allowed = {
+            "name",
+            "kind",
+            "address",
+            "probe_type",
+            "tier",
+            "enabled",
+            "snmp_community",
+            "snmp_v3_user",
+            "snmp_v3_auth",
+            "snmp_v3_priv",
+            "snmp_v3_auth_key",
+            "snmp_v3_priv_key",
+        }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return
