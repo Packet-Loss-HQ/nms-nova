@@ -11,7 +11,7 @@ from fastapi import HTTPException, Request
 import httpx
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from secrets import compare_digest
@@ -2168,3 +2168,43 @@ async def delete_widget(dashboard_id: int, widget_id: int):
     store.delete_widget(widget_id)
     return HTMLResponse(_post_save_redirect(f"/dashboards/{dashboard_id}"))
 
+
+@app.get("/anomalies")
+async def anomalies_page(request: Request):
+    _require_feature("anomaly_detection")
+    anomalies = store.list_anomalies(limit=200)
+    items = "".join(
+        f"<div class='alert-item alert-{'critical' if a.get('severity')=='critical' else 'warning'}'><span class='alert-target'>{a.get('target_id')}/{a.get('definition_id')}</span><span class='alert-text'>z={a.get('zscore',0):.2f}</span><span class='alert-value'>{a.get('value')}</span></div>"
+        for a in anomalies
+    ) or "<div class='empty'>No anomalies detected.</div>"
+    body = (
+        "<div class='page-header'><h2>Anomalies</h2></div>"
+        "<div class='grid'><div class='card'><div class='card-body'>"
+        f"{items}</div></div></div>"
+    )
+    return HTMLResponse(_layout("Anomalies", body))
+
+
+@api_router.get("/anomalies", include_in_schema=False)
+def api_list_anomalies(request: Request):
+    _require_feature("anomaly_detection")
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    rows = store.list_anomalies(limit=200)
+    return JSONResponse([dict(r) for r in rows])
+
+
+@api_router.get("/baselines", include_in_schema=False)
+def api_list_baselines(request: Request):
+    _require_feature("anomaly_detection")
+    scopes = getattr(request.state, "api_scopes", [])
+    if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
+        return JSONResponse({"detail": "forbidden"}, status_code=403)
+    con = __import__("sqlite3").connect(store.db_path)
+    con.row_factory = __import__("sqlite3").Row
+    try:
+        rows = con.execute("SELECT b.*, t.name AS target_name, d.name AS metric_name FROM metric_baselines b JOIN targets t ON t.id = b.target_id JOIN metric_definitions d ON d.id = b.definition_id ORDER BY b.updated_at DESC").fetchall()
+        return JSONResponse([dict(r) for r in rows])
+    finally:
+        con.close()

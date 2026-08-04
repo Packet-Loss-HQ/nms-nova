@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from probes.anomaly import AnomalyEngine
 from probes.definitions import (
     probe_cpu_usage,
     probe_disk_root_used_percent,
@@ -138,15 +139,21 @@ def run_once(store: MetricsStore, runner: ProbeRunner) -> None:
                     **{k: v for k, v in probe_kwargs.items() if k not in ("service_name", "container_name", "interface")},
                 )
                 store.insert_sample(result.target_id, result.definition_id, result.value, error=result.error)
+                self.anomaly.evaluate(result.target_id, result.definition_id, result.value)
             except Exception as exc:
                 log.exception("probe_failed target=%s metric=%s", name, m["name"])
                 store.insert_sample(tid, definition_id, 0.0, error=str(exc))
+                try:
+                    self.anomaly.evaluate(tid, definition_id, 0.0)
+                except Exception:
+                    pass
 
 
 class PollLoop:
     def __init__(self, db_path: Path, poll_interval: int = 30):
         self.store = MetricsStore(str(db_path))
         self.runner = ProbeRunner(timeout_sec=10)
+        self.anomaly = AnomalyEngine(self.store)
         self.poll_interval = poll_interval
         self._running = True
 
@@ -161,7 +168,10 @@ class PollLoop:
                 run_once(self.store, self.runner)
             except Exception:
                 pass
-            time.sleep(self.poll_interval)
+            try:
+                time.sleep(self.poll_interval)
+            except Exception:
+                pass
 
 
 def main() -> int:

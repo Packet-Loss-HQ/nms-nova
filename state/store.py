@@ -255,6 +255,33 @@ class MetricsStore:
             )
             con.execute("CREATE INDEX IF NOT EXISTS idx_dashboards_sort ON custom_dashboards(sort_order)")
             con.execute("CREATE INDEX IF NOT EXISTS idx_widgets_dashboard ON dashboard_widgets(dashboard_id, sort_order)")
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metric_baselines (
+                    target_id INTEGER NOT NULL,
+                    definition_id INTEGER NOT NULL,
+                    mean REAL NOT NULL DEFAULT 0,
+                    stddev REAL NOT NULL DEFAULT 0,
+                    sample_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY(target_id, definition_id)
+                )
+                """
+            )
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metric_anomalies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target_id INTEGER NOT NULL,
+                    definition_id INTEGER NOT NULL,
+                    value REAL NOT NULL,
+                    zscore REAL NOT NULL,
+                    severity TEXT NOT NULL DEFAULT 'warning',
+                    detected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            con.execute("CREATE INDEX IF NOT EXISTS idx_anomalies_detected ON metric_anomalies(detected_at)")
             con.commit()
         finally:
             con.close()
@@ -1103,6 +1130,44 @@ class MetricsStore:
                     settings.get("webhook_url", ""),
                 ),
             )
+            con.commit()
+        finally:
+            con.close()
+
+    def get_baseline(self, target_id: int, definition_id: int) -> dict | None:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM metric_baselines WHERE target_id=? AND definition_id=?", (target_id, definition_id)).fetchone()
+            return dict(row) if row else None
+        finally:
+            con.close()
+
+    def upsert_baseline(self, target_id: int, definition_id: int, mean: float, stddev: float, sample_count: int) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                "INSERT INTO metric_baselines(target_id, definition_id, mean, stddev, sample_count, updated_at) VALUES(?,?,?,?,?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(target_id, definition_id) DO UPDATE SET mean=excluded.mean, stddev=excluded.stddev, sample_count=excluded.sample_count, updated_at=excluded.updated_at",
+                (target_id, definition_id, float(mean), float(stddev), int(sample_count)),
+            )
+            con.commit()
+        finally:
+            con.close()
+
+    def list_anomalies(self, limit: int = 100) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in con.execute("SELECT * FROM metric_anomalies ORDER BY detected_at DESC LIMIT ?", (int(limit),)).fetchall()]
+        finally:
+            con.close()
+
+    def insert_anomaly(self, target_id: int, definition_id: int, value: float, zscore: float, severity: str = "warning") -> None:
+        sev = "critical" if zscore >= 3 else "warning"
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("INSERT INTO metric_anomalies(target_id, definition_id, value, zscore, severity) VALUES(?,?,?,?,?)", (target_id, definition_id, float(value), float(zscore), sev))
             con.commit()
         finally:
             con.close()
