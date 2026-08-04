@@ -67,6 +67,12 @@ class MetricsStore:
                 "CREATE INDEX IF NOT EXISTS idx_metric_samples_ts_target_def ON metric_samples(timestamp, target_id, definition_id)"
             )
             con.execute(
+                "CREATE TABLE IF NOT EXISTS metric_samples_archive (id INTEGER PRIMARY KEY AUTOINCREMENT, target_id INTEGER NOT NULL, definition_id INTEGER NOT NULL, timestamp TIMESTAMP NOT NULL, value REAL NOT NULL, error TEXT, archived_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+            )
+            con.execute(
+                "CREATE INDEX IF NOT EXISTS idx_metric_samples_archive_ts_target_def ON metric_samples_archive(timestamp, target_id, definition_id)"
+            )
+            con.execute(
                 "CREATE INDEX IF NOT EXISTS idx_metric_def_target ON metric_definitions(target_id)"
             )
             try:
@@ -244,6 +250,11 @@ class MetricsStore:
         cutoff = datetime.utcnow() - timedelta(days=retention_days)
         con = sqlite3.connect(self.db_path)
         try:
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute(
+                "INSERT INTO metric_samples_archive (target_id, definition_id, timestamp, value, error) SELECT target_id, definition_id, timestamp, value, error FROM metric_samples WHERE timestamp < ?",
+                (cutoff.isoformat(),),
+            )
             con.execute("DELETE FROM metric_samples WHERE timestamp < ?", (cutoff.isoformat(),))
             con.commit()
         finally:
