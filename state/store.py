@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+import hashlib
 NMS-Nova state store with SQLite + WAL.
 Append-only metric_samples with daily rollover cleanup.
 """
@@ -176,6 +177,60 @@ class MetricsStore:
                 con.execute("ALTER TABLE settings ADD COLUMN license_key TEXT")
             except Exception:
                 pass
+            con.commit()
+        finally:
+            con.close()
+
+    # User management
+    def list_users(self) -> list[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("SELECT id, username, role, enabled, created_at FROM users ORDER BY username").fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def get_user(self, username: str) -> dict | None:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            con.close()
+
+    def create_user(self, username: str, password: str, role: str = "viewer") -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(
+                "INSERT INTO users(username, password_hash, role) VALUES(?,?,?)",
+                (username, hashlib.sha256(password.encode()).hexdigest(), role),
+            )
+            con.commit()
+        finally:
+            con.close()
+
+    def update_user_role(self, username: str, role: str) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE users SET role = ? WHERE username = ?", (role, username))
+            con.commit()
+        finally:
+            con.close()
+
+    def set_user_enabled(self, username: str, enabled: bool) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE users SET enabled = ? WHERE username = ?", (1 if enabled else 0, username))
+            con.commit()
+        finally:
+            con.close()
+
+    def delete_user(self, username: str) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("DELETE FROM users WHERE username = ?", (username,))
             con.commit()
         finally:
             con.close()
