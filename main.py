@@ -1226,7 +1226,7 @@ def _layout(title: str, body: str) -> str:
     </nav>
   </header>
   <main id='main-content'>
-    {body.replace("{{csrf}}", csrf)}
+    {body.replace("{csrf}", csrf)}
   </main>
   <script>
     (function(){{
