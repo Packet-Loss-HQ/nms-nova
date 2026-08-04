@@ -370,7 +370,7 @@ class MetricsStore:
         vals = list(updates.values()) + [1]
         con = sqlite3.connect(self.db_path)
         try:
-            con.execute(f"UPDATE settings SET {sets} WHERE id=?", vals)
+            con.execute(f"INSERT OR REPLACE INTO settings(id, {', '.join(updates.keys())}) VALUES(?, {', '.join(['?'] * len(updates))})", [1] + list(updates.values()))
             con.commit()
         finally:
             con.close()

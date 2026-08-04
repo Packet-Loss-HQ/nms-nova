@@ -1162,11 +1162,10 @@ def _validate_license_key(key: str) -> bool:
 
 
 def _load_license() -> nms_license.License:
-    settings = store.get_settings()
-    mode = settings.get("license_mode", "mit")
-    key = settings.get("license_key")
+    brand = store.get_branding_settings()
+    mode = brand.get("license_mode", "mit")
     features = set(nms_license.COMMERCIAL_FEATURES) if mode == "commercial" else set(nms_license.MIT_FEATURES)
-    return nms_license.License(mode=mode, key=key, features=features)
+    return nms_license.License(mode=mode, key=None, features=features)
 
 
 def _upgrade_banner(license_mode: str = "mit") -> str:
@@ -1497,9 +1496,8 @@ async def activate_license(request: Request):
     valid = _validate_license_key(key)
     if not valid:
         return HTMLResponse("<div class='empty'>Invalid license key.</div>", status_code=400)
-    lic = nms_license.License(mode="commercial", key=key, features=set(nms_license.COMMERCIAL_FEATURES))
     store.save_branding_settings({"license_mode": "commercial"})
-    store.save_settings(license_key=key, license_mode="commercial")
+    store.save_settings(license_mode="commercial", license_key=key)
     body = """
     <div class='empty'>
       <p>License activated.</p>
@@ -1551,9 +1549,8 @@ async def activate_license(request: Request):
     valid = _validate_license_key(key)
     if not valid:
         return HTMLResponse("<div class='empty'>Invalid license key.</div>", status_code=400)
-    lic = nms_license.License(mode="commercial", key=key, features=set(nms_license.COMMERCIAL_FEATURES))
     store.save_branding_settings({"license_mode": "commercial"})
-    store.save_settings(license_key=key, license_mode="commercial")
+    store.save_settings(license_mode="commercial", license_key=key)
     body = """
     <div class='empty'>
       <p>License activated.</p>
