@@ -140,7 +140,10 @@ def _basic_auth(request: Request) -> bool:
     except Exception:
         return False
     username, _, password = decoded.partition(":")
-    user = store.get_user(username)
+    try:
+        user = store.get_user(username)
+    except Exception:
+        user = None
     if not user or not user.get("enabled"):
         return False
     import hashlib
@@ -587,7 +590,11 @@ async def target_chart(target_name: str, range: str = "24h"):
     con = __import__("sqlite3").connect(store.db_path)
     con.row_factory = __import__("sqlite3").Row
     try:
-        target_row = con.execute("SELECT id FROM targets WHERE name = ?", (target_name,)).fetchone()
+        if str(target_name).isdigit():
+            target_row = con.execute("SELECT id, name FROM targets WHERE id = ?", (int(target_name),)).fetchone()
+            target_name = target_row["name"] if target_row else target_name
+        else:
+            target_row = con.execute("SELECT id, name FROM targets WHERE name = ?", (target_name,)).fetchone()
         if not target_row:
             return {"error": "not_found"}
         target_id = target_row["id"]
@@ -1455,6 +1462,53 @@ def _upgrade_banner(license_mode: str = "mit") -> str:
     return ""
 
 
+
+def _dashboard_form(dashboard: Optional[dict] = None) -> str:
+    d = dashboard or {}
+    did = d.get("id", "")
+    action = f"/dashboards/{did}" if did else "/dashboards"
+    method = 'hx-put="true"' if did else ""
+    target_opts = "".join(
+        f"<option value='{t['id']}' {'selected' if str(t['id']) == str(d.get('target_filter','')) else ''}>{t['name']}</option>"
+        for t in store.list_targets()
+    )
+    return f"""
+    <form hx-post='{action}' {method} hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>Name</label><input name='name' value='{d.get('name','')}' required></div>
+      <div class='field'><label>Description</label><input name='description' value='{d.get('description','')}'></div>
+      <div class='field'><label>Target filter</label><select name='target_filter'><option value='all' {'selected' if d.get('target_filter','')=='all' else ''}>All</option>{target_opts}</select></div>
+      <div class='field'><label>Layout</label><select name='layout'><option value='grid' {'selected' if d.get('layout','grid')=='grid' else ''}>Grid</option><option value='list' {'selected' if d.get('layout','')=='list' else ''}>List</option></select></div>
+      <div class='field'><label>Sort order</label><input name='sort_order' type='number' value='{d.get('sort_order',0)}'></div>
+      <button type='submit' class='primary'>Save</button> <button type='button' hx-get='/dashboards' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
+    </form>
+    """
+
+
+def _widget_form(dashboard_id: int, widget: Optional[dict] = None) -> str:
+    w = widget or {}
+    wid = w.get("id", "")
+    action = f"/dashboards/{dashboard_id}/widgets/{wid}" if wid else f"/dashboards/{dashboard_id}/widgets"
+    method = 'hx-put="true"' if wid else ""
+    target_opts = "".join(
+        f"<option value='{t['id']}' {'selected' if str(t['id']) == str(w.get('target_id',0)) else ''}>{t['name']}</option>"
+        for t in store.list_targets()
+    )
+    metric_opts = "".join(
+        f"<option value='{name}' {'selected' if name == w.get('metric_name','') else ''}>{label}</option>"
+        for name, label in METRIC_OPTIONS
+    )
+    return f"""
+    <form hx-post='{action}' {method} hx-target='#main-content' hx-swap='innerHTML'>
+      <div class='field'><label>Target</label><select name='target_id'><option value='0'>All</option>{target_opts}</select></div>
+      <div class='field'><label>Metric</label><select name='metric_name'>{metric_opts}</select></div>
+      <div class='field'><label>Chart</label><select name='chart_type'><option value='line' {'selected' if w.get('chart_type','line')=='line' else ''}>Line</option><option value='bar' {'selected' if w.get('chart_type','')=='bar' else ''}>Bar</option></select></div>
+      <div class='field'><label>Range</label><select name='range'><option value='24h' {'selected' if w.get('range','24h')=='24h' else ''}>24h</option><option value='7d' {'selected' if w.get('range','')=='7d' else ''}>7d</option><option value='30d' {'selected' if w.get('range','')=='30d' else ''}>30d</option></select></div>
+      <div class='field'><label>Sort order</label><input name='sort_order' type='number' value='{w.get('sort_order',0)}'></div>
+      <button type='submit' class='primary'>Save</button> <button type='button' hx-get='/dashboards/{dashboard_id}' hx-target='#main-content' hx-swap='innerHTML'>Cancel</button>
+    </form>
+    """
+
+
 def _layout(title: str, body: str) -> str:
     import secrets
     csrf = secrets.token_urlsafe(16)
@@ -1485,6 +1539,7 @@ def _layout(title: str, body: str) -> str:
       <a href='/'>Dashboard</a>
       <a href='/targets'>Targets</a>
       <a href='/alerts'>Alerts</a>
+      <a href='/dashboards'>Dashboards</a>
       <a href='/settings'>Settings</a>
     </nav>
   </header>
@@ -1954,7 +2009,162 @@ async def backup_run():
     _require_feature("backup_restore")
     return HTMLResponse(_post_save_redirect("/settings/backup"))
 
+
 @app.get("/dashboards")
 async def custom_dashboards():
     _require_feature("custom_dashboards")
-    return HTMLResponse("<div class='empty'>Custom dashboards are a commercial feature.</div>")
+    dashboards = store.list_dashboards()
+    cards = "".join(
+        f"<div class='card'><div class='card-body'>"
+        f"<div class='card-title'>{d.get('name','')}</div>"
+        f"<div class='card-meta'>{d.get('description','')}</div>"
+        f"<div class='actions'>"
+        f"<a class='button' href='/dashboards/{d['id']}'>Open</a> "
+        f"<a class='button' href='/dashboards/{d['id']}/edit'>Edit</a> "
+        f"<button class='danger' hx-delete='/dashboards/{d['id']}' hx-confirm='Delete {d.get('name','')}?' hx-target='#main-content' hx-swap='innerHTML'>Delete</button>"
+        f"</div></div></div>"
+        for d in dashboards
+    ) or "<div class='empty'>No custom dashboards yet.</div>"
+    body = (
+        "<div class='page-header'><h2>Dashboards</h2><button class='primary' hx-get='/dashboards/new' hx-target='#main-content' hx-swap='innerHTML'>New dashboard</button></div>"
+        "<div class='grid'>" + cards + "</div>"
+    )
+    return HTMLResponse(_layout("Dashboards", body))
+
+
+@app.get("/dashboards/new")
+async def new_dashboard_form():
+    _require_feature("custom_dashboards")
+    body = _dashboard_form()
+    return HTMLResponse(_layout("New dashboard", body))
+
+
+@app.post("/dashboards")
+async def create_dashboard(request: Request):
+    _require_feature("custom_dashboards")
+    form = await request.form()
+    did = store.create_dashboard(
+        name=form.get("name", ""),
+        description=form.get("description", ""),
+        target_filter=form.get("target_filter", "all"),
+        layout=form.get("layout", "grid"),
+        sort_order=int(form.get("sort_order", 0)),
+    )
+    return HTMLResponse(_post_save_redirect(f"/dashboards/{did}/edit"))
+
+
+@app.get("/dashboards/{dashboard_id}")
+async def view_dashboard(dashboard_id: int):
+    _require_feature("custom_dashboards")
+    db = store.get_dashboard(dashboard_id)
+    if not db:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    widgets = store.list_widgets(dashboard_id)
+    targets = {t["id"]: t for t in store.list_targets()}
+    charts = []
+    for w in widgets:
+        tid = int(w.get("target_id") or 0)
+        target = targets.get(tid)
+        target_name = target.get("name") if target else "all"
+        charts.append(
+            f"<div class='chart-container' data-target='{target_name}' data-metric='{w.get('metric_name','')}' data-range='{w.get('range','24h')}' data-chart='{w.get('chart_type','line')}'>"
+            f"<div class='chart-header'>{w.get('metric_name','')} ({w.get('range','24h')})</div>"
+            f"<div class='chart-wrap'><canvas id='dash-{dashboard_id}-{w['id']}'></canvas></div>"
+            f"</div>"
+        )
+    body = (
+        "<div class='page-header'><h2>{name}</h2><button class='primary' hx-get='/dashboards/{id}/widgets/new' hx-target='#main-content' hx-swap='innerHTML'>Add widget</button></div>"
+        "<div class='grid'>" + ("".join(charts) or "<div class='empty'>No widgets.</div>") + "</div>"
+    ).format(name=db.get("name", ""), id=dashboard_id)
+    return HTMLResponse(_layout(db.get("name", "Dashboard"), body))
+
+
+@app.get("/dashboards/{dashboard_id}/edit")
+async def edit_dashboard_form(dashboard_id: int):
+    _require_feature("custom_dashboards")
+    db = store.get_dashboard(dashboard_id)
+    if not db:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    body = _dashboard_form(db)
+    return HTMLResponse(_layout("Edit dashboard", body))
+
+
+@app.put("/dashboards/{dashboard_id}")
+async def update_dashboard(dashboard_id: int, request: Request):
+    _require_feature("custom_dashboards")
+    db = store.get_dashboard(dashboard_id)
+    if not db:
+        return HTMLResponse("<div class='empty'>Not found</div>", status_code=404)
+    form = await request.form()
+    store.update_dashboard(
+        dashboard_id,
+        name=form.get("name", db["name"]),
+        description=form.get("description", db.get("description", "")),
+        target_filter=form.get("target_filter", db.get("target_filter", "all")),
+        layout=form.get("layout", db.get("layout", "grid")),
+        sort_order=int(form.get("sort_order", db.get("sort_order", 0))),
+    )
+    return HTMLResponse(_post_save_redirect(f"/dashboards/{dashboard_id}"))
+
+
+@app.delete("/dashboards/{dashboard_id}")
+async def delete_dashboard(dashboard_id: int):
+    _require_feature("custom_dashboards")
+    store.delete_dashboard(dashboard_id)
+    return HTMLResponse(_post_save_redirect("/dashboards"))
+
+
+@app.get("/dashboards/{dashboard_id}/widgets/new")
+async def new_widget_form(dashboard_id: int):
+    _require_feature("custom_dashboards")
+    body = _widget_form(dashboard_id)
+    return HTMLResponse(_layout("New widget", body))
+
+
+@app.post("/dashboards/{dashboard_id}/widgets")
+async def create_widget(dashboard_id: int, request: Request):
+    _require_feature("custom_dashboards")
+    form = await request.form()
+    store.add_widget(
+        dashboard_id=dashboard_id,
+        metric_name=form.get("metric_name", ""),
+        chart_type=form.get("chart_type", "line"),
+        range=form.get("range", "24h"),
+        sort_order=int(form.get("sort_order", 0)),
+        target_id=int(form.get("target_id", 0)),
+    )
+    return HTMLResponse(_post_save_redirect(f"/dashboards/{dashboard_id}"))
+
+
+@app.get("/dashboards/{dashboard_id}/widgets/{widget_id}/edit")
+async def edit_widget_form(dashboard_id: int, widget_id: int):
+    _require_feature("custom_dashboards")
+    widgets = store.list_widgets(dashboard_id)
+    widget = next((w for w in widgets if w.get("id") == widget_id), None)
+    if not widget:
+        return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
+    body = _widget_form(dashboard_id, widget)
+    return HTMLResponse(_layout("Edit widget", body))
+
+
+@app.put("/dashboards/{dashboard_id}/widgets/{widget_id}")
+async def update_widget(dashboard_id: int, widget_id: int, request: Request):
+    _require_feature("custom_dashboards")
+    form = await request.form()
+    store.update_widget(
+        widget_id,
+        metric_name=form.get("metric_name"),
+        chart_type=form.get("chart_type", "line"),
+        range=form.get("range", "24h"),
+        sort_order=int(form.get("sort_order", 0)),
+        target_id=int(form.get("target_id", 0)),
+    )
+    return HTMLResponse(_post_save_redirect(f"/dashboards/{dashboard_id}"))
+
+
+@app.delete("/dashboards/{dashboard_id}/widgets/{widget_id}")
+async def delete_widget(dashboard_id: int, widget_id: int):
+    _require_feature("custom_dashboards")
+    store.delete_widget(widget_id)
+    return HTMLResponse(_post_save_redirect(f"/dashboards/{dashboard_id}"))
+

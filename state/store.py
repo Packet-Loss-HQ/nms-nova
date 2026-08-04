@@ -568,6 +568,103 @@ class MetricsStore:
         finally:
             con.close()
 
+    def list_dashboards(self) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("SELECT * FROM custom_dashboards ORDER BY sort_order, id").fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def get_dashboard(self, dashboard_id: int) -> Optional[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute("SELECT * FROM custom_dashboards WHERE id = ?", (dashboard_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            con.close()
+
+    def create_dashboard(self, name: str, description: str = "", target_filter: str = "all", layout: str = "grid", sort_order: int = 0) -> int:
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.execute(
+                "INSERT INTO custom_dashboards(name, description, target_filter, layout, sort_order) VALUES(?,?,?,?,?)",
+                (name, description, target_filter, layout, sort_order),
+            )
+            con.commit()
+            return cur.lastrowid
+        finally:
+            con.close()
+
+    def update_dashboard(self, dashboard_id: int, **fields: Any) -> None:
+        allowed = {"name", "description", "target_filter", "layout", "sort_order", "enabled"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [dashboard_id]
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(f"UPDATE custom_dashboards SET {sets} WHERE id=?", vals)
+            con.commit()
+        finally:
+            con.close()
+
+    def delete_dashboard(self, dashboard_id: int) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("DELETE FROM dashboard_widgets WHERE dashboard_id=?", (dashboard_id,))
+            con.execute("DELETE FROM custom_dashboards WHERE id=?", (dashboard_id,))
+            con.commit()
+        finally:
+            con.close()
+
+    def add_widget(self, dashboard_id: int, metric_name: str, chart_type: str = "line", range: str = "24h", sort_order: int = 0, target_id: int = 0) -> int:
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.execute(
+                "INSERT INTO dashboard_widgets(dashboard_id, target_id, metric_name, chart_type, range, sort_order) VALUES(?,?,?,?,?,?)",
+                (dashboard_id, target_id, metric_name, chart_type, range, sort_order),
+            )
+            con.commit()
+            return cur.lastrowid
+        finally:
+            con.close()
+
+    def list_widgets(self, dashboard_id: int) -> List[dict]:
+        con = sqlite3.connect(self.db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute("SELECT * FROM dashboard_widgets WHERE dashboard_id=? ORDER BY sort_order, id", (dashboard_id,)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
+    def update_widget(self, widget_id: int, **fields: Any) -> None:
+        allowed = {"metric_name", "chart_type", "range", "sort_order", "target_id"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [widget_id]
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute(f"UPDATE dashboard_widgets SET {sets} WHERE id=?", vals)
+            con.commit()
+        finally:
+            con.close()
+
+    def delete_widget(self, widget_id: int) -> None:
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("DELETE FROM dashboard_widgets WHERE id=?", (widget_id,))
+            con.commit()
+        finally:
+            con.close()
+
     def get_branding_settings(self) -> dict:
         con = sqlite3.connect(self.db_path)
         con.row_factory = sqlite3.Row
