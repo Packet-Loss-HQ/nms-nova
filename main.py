@@ -592,7 +592,10 @@ async def settings_form():
     general = store.get_settings()
     retention = general.get("retention_days", 30)
     masked = "••••••••" if general.get("web_password_hash") else ""
+    brand = store.get_branding_settings()
+    banner = _upgrade_banner(brand.get("license_mode", "mit"))
     body = (
+        f"{banner}"
         "<div class='page-header'><h2>Settings</h2></div>"
         "<div class='grid'>"
         "<div class='card'><div class='card-header'><div class='card-title'>Account</div></div>"
