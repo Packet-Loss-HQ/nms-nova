@@ -648,6 +648,7 @@ async def settings_form():
         f"<div class='metric-row'><span class='metric-name'>Commercial features</span><span class='metric-value'>{'Enabled' if brand.get('license_mode') == 'commercial' else 'Disabled'}</span></div>"
         "<a class='button primary' href='/upgrade'>Upgrade</a>"
         "<a class='button' href='/license'>Manage license</a>"
+        "<a class='button' href='/settings/delivery-log'>Delivery log</a>"
         "</div></div>"
         "</div>"
     )
@@ -665,6 +666,24 @@ async def update_retention(request: Request):
     return HTMLResponse(_post_save_redirect("/settings"))
 
 
+@app.get("/settings/delivery-log")
+async def delivery_log_page():
+    _require_feature("alert_escalation")
+    rows = store.recent_delivery_log(limit=200)
+    items = "".join(
+        f"<tr><td>{r.get('timestamp')}</td><td>{r.get('destination')}</td><td>{r.get('alert_count')}</td><td>{r.get('status')}</td><td>{r.get('error') or ''}</td></tr>"
+        for r in rows
+    ) or "<tr><td colspan='5'>No deliveries yet.</td></tr>"
+    body = (
+        "<div class='page-header'><h2>Delivery Log</h2></div>"
+        "<div class='card'><div class='card-body'>"
+        f"<table class='table'><thead><tr><th>Time</th><th>Destination</th><th>Alerts</th><th>Status</th><th>Error</th></tr></thead><tbody>{items}</tbody></table>"
+        "</div></div>"
+        "<p><a href='/settings'>Back to Settings</a></p>"
+    )
+    return HTMLResponse(_layout("Delivery Log", body))
+
+
 @app.post("/settings/password")
 async def update_password(request: Request):
     form = await request.form()
@@ -680,6 +699,7 @@ async def update_password(request: Request):
 @app.post("/settings/delivery")
 async def save_delivery(request: Request):
     form = await request.form()
+    _require_feature("alert_escalation")
     if form.get("_csrf") != request.cookies.get("_csrf") and os.getenv("NMS_DEV") != "1":
         return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
     settings = {
