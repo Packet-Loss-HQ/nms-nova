@@ -1142,6 +1142,12 @@ def _post_save_redirect(location: str) -> str:
     return f"<div hx-redirect='{location}'></div>"
 
 
+def _upgrade_banner(license_mode: str = "mit") -> str:
+    if license_mode != "commercial":
+        return """<div class="upgrade-banner"><strong>NMS-Nova Commercial</strong> unlocks extended retention, SNMP, escalation, white-label, RBAC, and more. <a href="/upgrade">Learn more</a>.</div>"""
+    return ""
+
+
 def _layout(title: str, body: str) -> str:
     import secrets
     csrf = secrets.token_urlsafe(16)
@@ -1355,7 +1361,9 @@ def api_save_branding(request: Request, body: dict = {}):
 @app.get("/settings/branding")
 async def branding_form():
     settings = store.get_branding_settings()
+    banner = _upgrade_banner(settings.get("license_mode", "mit"))
     body = f"""
+    {banner}
     <div class='page-header'><h2>Branding</h2></div>
     <form id='branding-form' hx-post='/settings/branding' hx-target='#main-content' hx-swap='innerHTML'>
       <div id='brand-preview'></div>
@@ -1367,7 +1375,7 @@ async def branding_form():
         <option value='mit' {'selected' if settings.get('license_mode')=='mit' else ''}>MIT</option>
         <option value='commercial' {'selected' if settings.get('license_mode')=='commercial' else ''}>Commercial</option>
       </select></div>
-      <div class='field'><label><input type='checkbox' name='hide_powered_by' {'checked' if settings.get('hide_powered_by') else ''}> Hide powered-by line</label></div>
+      <div class='field'><label><input type='checkbox' name='hide_powered_by' {'checked' if settings.get('hide_powered_by') else ''} {'disabled' if not nms_license.is_enabled(_load_license(), 'white_label') else ''}> Hide powered-by line</label></div>
       <input type='hidden' name='_csrf' value='{{csrf}}'>
       <button type='submit'>Save branding</button>
     </form>
@@ -1435,12 +1443,24 @@ def license_check():
 
 @app.get("/upgrade")
 async def upgrade_page():
-    body = """
+    lic = _load_license()
+    features = nms_license.commercial_features_summary(lic)
+    mit = [f for f in features if f["id"].startswith("core_")]
+    paid = [f for f in features if not f["id"].startswith("core_")]
+    rows = "".join([
+        f"<tr><td>{f['name']}</td><td>{'✅' if f['enabled'] else '❌'}</td></tr>" for f in features
+    ])
+    body = f"""
     <div class='page-header'><h2>Commercial License</h2></div>
     <div class='empty'>
       <p>NMS-Nova commercial license removes usage restrictions and includes priority support.</p>
       <p>Contact <a href='mailto:sales@packet-loss.net'>sales@packet-loss.net</a> for pricing.</p>
     </div>
+    <h3>Feature matrix</h3>
+    <table class='table'>
+      <thead><tr><th>Feature</th><th>Enabled</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
     """
     return HTMLResponse(_layout("Upgrade", body))
 
