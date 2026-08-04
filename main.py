@@ -819,6 +819,7 @@ async def list_alerts_ui():
 
 @app.get("/alerts/new")
 async def new_alert_form(request: Request):
+    _require_feature("alert_escalation")
     body = _alert_rule_form()
     if request.headers.get("hx-request"):
         return HTMLResponse(body)
@@ -827,6 +828,7 @@ async def new_alert_form(request: Request):
 
 @app.get("/alerts/{rule_id}/edit")
 async def edit_alert_form(rule_id: int):
+    _require_feature("alert_escalation")
     rule = next((r for r in store.list_alert_rules() if r["id"] == rule_id), None)
     if not rule:
         return HTMLResponse(_layout("Not found", "<div class='empty'>Not found</div>"), status_code=404)
@@ -1274,6 +1276,7 @@ def api_list_alert_rules():
 @api_router.get("/alerts/delivery")
 def api_get_delivery_settings():
     _require_feature("multichannel_delivery")
+    _require_feature("multichannel_delivery")
     settings = store.get_delivery_settings()
     return JSONResponse({
         "telegram_enabled": bool(settings.get("telegram_enabled")),
@@ -1287,12 +1290,14 @@ def api_get_delivery_settings():
 @api_router.get("/alerts/delivery/log")
 def api_delivery_log(limit: int = 100):
     _require_feature("multichannel_delivery")
+    _require_feature("multichannel_delivery")
     rows = store.recent_delivery_log(limit)
     return JSONResponse([dict(r) for r in rows])
 
 
 @api_router.post("/alerts/escalate")
 def api_execute_escalations(request: Request):
+    _require_feature("alert_escalation")
     _require_feature("alert_escalation")
     scopes = getattr(request.state, "api_scopes", [])
     if "admin" not in scopes and not _basic_auth(request) and not _bearer_auth(request):
@@ -1315,6 +1320,7 @@ def api_execute_escalations(request: Request):
 
 @api_router.get("/alerts/pending-escalations")
 def api_pending_escalations():
+    _require_feature("alert_escalation")
     _require_feature("alert_escalation")
     rows = store.pending_escalations()
     return JSONResponse([dict(r) for r in rows])
