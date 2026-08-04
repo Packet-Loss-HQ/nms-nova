@@ -48,6 +48,13 @@ try:
 except Exception:
     _api_tokens_cache = []
 
+try:
+    if not store.list_users():
+        import hashlib
+        store.create_user(os.getenv("NMS_AUTH_USER", "admin"), os.getenv("NMS_AUTH_PASS", "admin"), "admin")
+except Exception:
+    pass
+
 _initial_alert_rules = [
     AlertRule(metric_name="cpu_usage_percent", threshold=90.0, comparison="gt", description="CPU critical"),
     AlertRule(metric_name="memory_used_percent", threshold=90.0, comparison="gt", description="Memory critical"),
