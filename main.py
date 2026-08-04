@@ -1371,7 +1371,7 @@ async def branding_form():
       <div class='field'><label>Product name</label><input name='product_name' value='{settings.get('product_name','NMS-Nova')}'></div>
       <div class='field'><label>Brand title</label><input name='brand_title' value='{settings.get('brand_title','NMS-Nova')}'></div>
       <div class='field'><label>Custom CSS URL</label><input name='brand_css_url' value='{settings.get('brand_css_url') or ''}' placeholder='https://example.com/brand.css'></div>
-      <div class='field'><label>License mode</label><select name='license_mode'>
+      <div class='field'><label>License mode</label><select name='license_mode' {'disabled' if not nms_license.is_enabled(_load_license(), 'commercial_license') else ''}>
         <option value='mit' {'selected' if settings.get('license_mode')=='mit' else ''}>MIT</option>
         <option value='commercial' {'selected' if settings.get('license_mode')=='commercial' else ''}>Commercial</option>
       </select></div>
@@ -1388,13 +1388,16 @@ async def save_branding(request: Request):
     form = await request.form()
     if form.get("_csrf") != request.cookies.get("_csrf"):
         return HTMLResponse("<div class='empty'>Invalid session token.</div>", status_code=403)
-    store.save_branding_settings({
+    payload = {
         "product_name": form.get("product_name", "NMS-Nova"),
         "brand_title": form.get("brand_title", "NMS-Nova"),
         "brand_css_url": form.get("brand_css_url") or None,
         "hide_powered_by": form.get("hide_powered_by") == "on",
         "license_mode": form.get("license_mode", "mit"),
-    })
+    }
+    if payload["license_mode"] == "commercial":
+        _require_feature("commercial_license")
+    store.save_branding_settings(payload)
     return HTMLResponse(_post_save_redirect("/settings/branding"))
 
 
