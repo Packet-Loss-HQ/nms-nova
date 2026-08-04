@@ -17,6 +17,18 @@ from fastapi.staticfiles import StaticFiles
 from secrets import compare_digest
 import yaml
 import state.store
+from state import license as nms_license
+
+
+def _require_feature(feature: str):
+    lic = _load_license()
+    if not nms_license.is_enabled(lic, feature):
+        raise HTTPException(status_code=403, detail={
+            "error": "feature_not_available",
+            "feature": feature,
+            "license_mode": lic.mode,
+            "message": nms_license.feature_not_available_message(feature, lic.mode),
+        })
 from state.alerts import AlertEngine, AlertRule
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -627,6 +639,8 @@ async def settings_form():
 async def update_retention(request: Request):
     form = await request.form()
     days = int(form.get("retention_days", 30))
+    if days > 30:
+        _require_feature("extended_retention")
     store.save_settings(retention_days=days)
     store.cleanup(retention_days=days)
     return HTMLResponse(_post_save_redirect("/settings"))
@@ -1399,24 +1413,23 @@ async def preview_branding(request: Request):
 
 
 
-# M15: commercial license feature gates
-_brand = store.get_branding_settings()
-_commercial_mode = _brand.get("license_mode") == "commercial"
-_commercial_features = {
-    "advanced_reporting": _commercial_mode,
-    "commercial_support": _commercial_mode,
-    "priority_routing": _commercial_mode,
-}
+# M15+: commercial license feature gates
+def _load_license() -> nms_license.License:
+    settings = store.get_branding_settings()
+    return nms_license.License(
+        mode=settings.get("license_mode", "mit"),
+        features=set(settings.get("license_features", "").split(",")) if settings.get("license_features") else set(),
+    )
 
 
 @app.get("/license/check")
 def license_check():
-    settings = store.get_branding_settings()
+    lic = _load_license()
     return JSONResponse({
-        "mode": settings.get("license_mode", "mit"),
-        "commercial_features_enabled": settings.get("license_mode") == "commercial",
-        "features": _commercial_features,
-        "support_contact": "sales@packet-loss.net" if settings.get("license_mode") == "commercial" else None,
+        "mode": lic.mode,
+        "commercial_features_enabled": lic.mode == "commercial",
+        "features": nms_license.commercial_features_summary(lic),
+        "support_contact": "sales@packet-loss.net" if lic.mode == "commercial" else None,
     })
 
 

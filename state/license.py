@@ -90,3 +90,6 @@ _FEATURE_NAMES = {
     "priority_support": "Priority support",
     "commercial_license": "Commercial license",
 }
+
+def feature_not_available_message(feature: str, mode: str) -> str:
+    return f"Feature `{feature}` is not available under the current license ({mode}). Upgrade to a commercial license to unlock it."
