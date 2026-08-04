@@ -630,6 +630,11 @@ async def settings_form():
         "<div id='test-result'></div>"
         "<div class='card'><div class='card-header'><span class='card-title'>Test</span></div>"
         "<div class='card-body'><button class='primary' hx-post='/settings/test' hx-target='#test-result' hx-swap='innerHTML'>Send test alert</button></div></div>"
+        "<div class='card'><div class='card-header'><div class='card-title'>License</div></div><div class='card-body'>"
+        f"<div class='metric-row'><span class='metric-name'>Mode</span><span class='metric-value'>{brand.get('license_mode','mit').upper()}</span></div>"
+        f"<div class='metric-row'><span class='metric-name'>Commercial features</span><span class='metric-value'>{'Enabled' if brand.get('license_mode') == 'commercial' else 'Disabled'}</span></div>"
+        "<a class='button primary' href='/upgrade'>Upgrade</a>"
+        "</div></div>"
         "</div>"
     )
     return HTMLResponse(_layout("Settings", body))
