@@ -6,7 +6,7 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 import httpx
 from fastapi import FastAPI, Request
